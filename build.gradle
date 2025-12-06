@@ -1,0 +1,62 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+
+application {
+    mainClass = 'org.example.Main'
+    applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Apache Commons IO for file utilities (updated from 2.11.0)
+    implementation 'commons-io:commons-io:2.18.0'
+
+    // Apache Commons Codec for file hashing (updated from 1.15)
+    implementation 'commons-codec:commons-codec:1.17.1'
+
+    // xxHash3 for ultra-fast file hashing (zero-allocation)
+    implementation 'net.openhft:zero-allocation-hashing:0.27ea1'
+
+    // Jackson for JSON serialization - updated to latest (from 2.15.2)
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+
+    // FlatLaf - Modern Look and Feel
+    implementation 'com.formdev:flatlaf:3.5.2'
+
+    // Testing dependencies
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// Create executable JAR with all dependencies
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'org.example.Main',
+            'Add-Opens': 'java.base/java.lang java.base/sun.nio.ch'
+        )
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// Add run task configuration for development
+run {
+    jvmArgs = ['--enable-native-access=ALL-UNNAMED']
+}
+
