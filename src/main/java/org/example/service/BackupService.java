@@ -8,15 +8,15 @@ import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Service class responsible for performing the actual backup operations.
+ * Serwis wykonujący operacje kopii zapasowej.
  */
 public class BackupService extends SwingWorker<Boolean, BackupProgress> {
 
@@ -33,16 +33,10 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
     }
 
     public BackupService(List<BackupFile> filesToBackup, BackupConfiguration configuration,
-                        BackupProgressCallback progressCallback) {
-        if (filesToBackup == null) {
-            throw new IllegalArgumentException("filesToBackup cannot be null");
-        }
-        if (configuration == null) {
-            throw new IllegalArgumentException("configuration cannot be null");
-        }
-        if (configuration.getMasterBackupLocation() == null) {
-            throw new IllegalArgumentException("Master backup location must be set");
-        }
+                         BackupProgressCallback progressCallback) {
+        Objects.requireNonNull(filesToBackup, "filesToBackup cannot be null");
+        Objects.requireNonNull(configuration, "configuration cannot be null");
+        Objects.requireNonNull(configuration.getMasterBackupLocation(), "Master backup location must be set");
 
         this.filesToBackup = filesToBackup;
         this.configuration = configuration;
@@ -51,21 +45,17 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
 
     @Override
     protected Boolean doInBackground() {
-        int processedFiles = 0;
-        int successCount = 0;
-        int errorCount = 0;
+        int processedFiles = 0, successCount = 0, errorCount = 0;
         long totalBytes = calculateTotalBytes();
         long processedBytes = 0;
 
         for (BackupFile backupFile : filesToBackup) {
             if (isCancelled()) {
-                // Store the success count before throwing exception
                 successCountBeforeCancellation.set(successCount);
                 throw new CancellationException("Backup cancelled by user");
             }
 
-            if (!backupFile.isSelected() ||
-                backupFile.getStatus() == BackupFile.BackupStatus.DUPLICATE) {
+            if (shouldSkipFile(backupFile)) {
                 processedFiles++;
                 continue;
             }
@@ -82,27 +72,30 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
                     processedBytes += backupFile.getSize();
                     notifyFileCompleted(backupFile, true, null);
                 } else {
-                    backupFile.setStatus(BackupFile.BackupStatus.ERROR);
+                    markAsError(backupFile, "Copy operation failed");
                     errorCount++;
-                    notifyFileCompleted(backupFile, false, "Copy operation failed");
                 }
-
             } catch (Exception e) {
-                backupFile.setStatus(BackupFile.BackupStatus.ERROR);
+                markAsError(backupFile, e.getMessage());
                 errorCount++;
-                notifyFileCompleted(backupFile, false, e.getMessage());
             }
 
             processedFiles++;
-
-            // Publish progress
             publish(new BackupProgress(processedFiles, filesToBackup.size(),
                     backupFile.getFileName(), processedBytes, totalBytes));
         }
 
-        // Final callback
         notifyBackupCompleted(successCount, errorCount);
         return true;
+    }
+
+    private boolean shouldSkipFile(BackupFile file) {
+        return !file.isSelected() || file.getStatus() == BackupFile.BackupStatus.DUPLICATE;
+    }
+
+    private void markAsError(BackupFile backupFile, String error) {
+        backupFile.setStatus(BackupFile.BackupStatus.ERROR);
+        notifyFileCompleted(backupFile, false, error);
     }
 
     private void notifyFileCompleted(BackupFile file, boolean success, String error) {
@@ -125,12 +118,13 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
                 .sum();
     }
 
+    // ====== OPERACJE NA PLIKACH ======
+
     private File calculateDestinationPath(BackupFile backupFile) throws IOException {
         File masterLocation = configuration.getMasterBackupLocation();
         String fileName = backupFile.getFileName();
 
         if (configuration.isCreateDateFolders()) {
-            // Create date-based folder structure (YYYY/MM)
             LocalDateTime fileDate = backupFile.getLastModified();
             String yearFolder = String.valueOf(fileDate.getYear());
             String monthFolder = String.format("%02d", fileDate.getMonthValue());
@@ -139,15 +133,22 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
             if (!dateFolder.exists() && !dateFolder.mkdirs()) {
                 throw new IOException("Failed to create date folder: " + dateFolder.getAbsolutePath());
             }
-
             return new File(dateFolder, fileName);
-        } else {
-            return new File(masterLocation, fileName);
         }
+        return new File(masterLocation, fileName);
     }
 
     private boolean copyFile(File source, File destination) throws IOException {
-        // Check available disk space before copying
+        validateDiskSpace(source, destination);
+
+        File finalDestination = resolveNameConflict(destination);
+        ensureParentDirectoryExists(finalDestination);
+
+        Files.copy(source.toPath(), finalDestination.toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+        return finalDestination.exists() && finalDestination.length() == source.length();
+    }
+
+    private void validateDiskSpace(File source, File destination) throws IOException {
         long sourceSize = source.length();
         long availableSpace = destination.getParentFile().getUsableSpace();
 
@@ -155,36 +156,22 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
             throw new IOException("Insufficient disk space. Required: " +
                 FileUtilities.formatFileSize(sourceSize) + ", Available: " + FileUtilities.formatFileSize(availableSpace));
         }
+    }
 
-        // Handle file name conflicts
-        File finalDestination = handleFileNameConflict(destination);
-
-        // Ensure parent directories exist
-        File parentDir = finalDestination.getParentFile();
+    private void ensureParentDirectoryExists(File file) throws IOException {
+        File parentDir = file.getParentFile();
         if (!parentDir.exists() && !parentDir.mkdirs()) {
             throw new IOException("Failed to create parent directory: " + parentDir.getAbsolutePath());
         }
-
-        // Copy file
-        Path sourcePath = source.toPath();
-        Path destPath = finalDestination.toPath();
-
-        Files.copy(sourcePath, destPath, StandardCopyOption.COPY_ATTRIBUTES);
-
-        // Verify the copy
-        return finalDestination.exists() && finalDestination.length() == source.length();
     }
 
-
-    private File handleFileNameConflict(File destination) {
+    private File resolveNameConflict(File destination) {
         if (!destination.exists()) {
             return destination;
         }
 
-        // If file exists, create a new name with counter
         String fileName = destination.getName();
-        String baseName;
-        String extension = "";
+        String baseName, extension = "";
 
         int lastDot = fileName.lastIndexOf('.');
         if (lastDot > 0) {
@@ -197,9 +184,7 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
         int counter = 1;
         File newDestination;
         do {
-            String newFileName = baseName + "_" + counter + extension;
-            newDestination = new File(destination.getParent(), newFileName);
-            counter++;
+            newDestination = new File(destination.getParent(), baseName + "_" + counter++ + extension);
         } while (newDestination.exists());
 
         return newDestination;
@@ -208,16 +193,16 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
     @Override
     protected void process(List<BackupProgress> chunks) {
         if (progressCallback != null && !chunks.isEmpty()) {
-            BackupProgress progress = chunks.get(chunks.size() - 1);
-            progressCallback.updateProgress(progress.getCurrentFile(), progress.getTotalFiles(),
-                    progress.getFileName(), progress.getBytesProcessed(), progress.getTotalBytes());
+            BackupProgress progress = chunks.getLast();
+            progressCallback.updateProgress(progress.currentFile(), progress.totalFiles(),
+                    progress.fileName(), progress.bytesProcessed(), progress.totalBytes());
         }
     }
 
     @Override
     protected void done() {
         try {
-            get(); // This will throw any exceptions that occurred
+            get();
         } catch (CancellationException e) {
             if (progressCallback != null) {
                 progressCallback.backupFailed("Backup was cancelled", successCountBeforeCancellation.get());

@@ -4,57 +4,64 @@ import org.example.gui.MainWindow;
 import com.formdev.flatlaf.FlatDarkLaf;
 
 import javax.swing.*;
+import java.awt.Insets;
 
 /**
- * Main class for the Multimedia File Backup Manager application.
+ * Główna klasa aplikacji Multimedia File Backup Manager.
+ * Inicjalizuje wygląd interfejsu i uruchamia główne okno.
  */
 public class Main {
-    private static final String APP_VERSION = "1.0-SNAPSHOT";
-    private static final String APP_NAME = "Multimedia File Backup Manager";
 
     public static void main(String[] args) {
-        // Print startup banner
+        printStartupInfo();
+        initializeLookAndFeel();
+        launchApplication();
+    }
+
+    private static void printStartupInfo() {
         System.out.println("==============================================");
-        System.out.println(APP_NAME + " v" + APP_VERSION);
+        System.out.println("Multimedia File Backup Manager");
         System.out.println("Java Version: " + System.getProperty("java.version"));
         System.out.println("Available CPUs: " + Runtime.getRuntime().availableProcessors());
         System.out.println("==============================================");
+    }
 
-        // Set modern dark theme using FlatLaf
+    private static void initializeLookAndFeel() {
         try {
             FlatDarkLaf.setup();
-            // Customize FlatLaf properties for modern look
-            UIManager.put("Button.arc", 8);
-            UIManager.put("Component.arc", 8);
-            UIManager.put("ProgressBar.arc", 8);
-            UIManager.put("TextComponent.arc", 8);
-            UIManager.put("ScrollBar.showButtons", false);
-            UIManager.put("ScrollBar.thumbArc", 8);
-            UIManager.put("ScrollBar.thumbInsets", new java.awt.Insets(2, 2, 2, 2));
-            UIManager.put("TabbedPane.showTabSeparators", true);
+            configureUIDefaults();
         } catch (Exception e) {
             System.err.println("Warning: Could not set FlatLaf Look and Feel: " + e.getMessage());
-            // Continue with default Look and Feel
         }
+    }
 
-        // Launch GUI on EDT
+    private static void configureUIDefaults() {
+        UIManager.put("Button.arc", 8);
+        UIManager.put("Component.arc", 8);
+        UIManager.put("ProgressBar.arc", 8);
+        UIManager.put("TextComponent.arc", 8);
+        UIManager.put("ScrollBar.showButtons", false);
+        UIManager.put("ScrollBar.thumbArc", 8);
+        UIManager.put("ScrollBar.thumbInsets", new Insets(2, 2, 2, 2));
+        UIManager.put("TabbedPane.showTabSeparators", true);
+    }
+
+    private static void launchApplication() {
         SwingUtilities.invokeLater(() -> {
             try {
-                MainWindow mainWindow = new MainWindow();
-                mainWindow.setVisible(true);
+                new MainWindow().setVisible(true);
             } catch (Exception e) {
-                // Log error to console with full stack trace
-                System.err.println("FATAL: Failed to start application: " + e.getMessage());
-                e.printStackTrace();
-
-                // Show user-friendly error dialog
-                JOptionPane.showMessageDialog(null,
-                    "Failed to start application:\n" + e.getMessage() +
-                    "\n\nPlease check the console for details.",
-                    "Startup Error",
-                    JOptionPane.ERROR_MESSAGE);
-                System.exit(1);
+                handleStartupError(e);
             }
         });
+    }
+
+    private static void handleStartupError(Exception e) {
+        System.err.println("FATAL: Failed to start application: " + e.getMessage());
+        JOptionPane.showMessageDialog(null,
+            "Failed to start application:\n" + e.getMessage() +
+            "\n\nPlease check the console for details.",
+            "Startup Error", JOptionPane.ERROR_MESSAGE);
+        System.exit(1);
     }
 }

@@ -12,9 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 
 /**
- * Service for managing xxHash3 hashes of files in the master backup folder.
- * Stores hashes persistently and validates changes on startup.
- * xxHash3 is the latest and fastest variant of xxHash, optimized for modern CPUs and large files.
+ * Serwis zarządzania haszami xxHash3 plików w folderze głównej kopii zapasowej.
+ * Przechowuje hasze trwale i waliduje zmiany przy starcie.
  */
 public class HashStorageService {
 
@@ -22,27 +21,28 @@ public class HashStorageService {
 
     private final File masterLocation;
     private final File hashFile;
-    private final Map<String, FileHashInfo> storedHashes; // relativePath -> FileHashInfo
-    private final Map<String, FileHashInfo> hashToInfoCache; // hash -> FileHashInfo (reverse index for O(1) lookups)
+    private final Map<String, FileHashInfo> storedHashes;
+    private final Map<String, FileHashInfo> hashToInfoCache;
     private final ObjectMapper objectMapper;
     private final int threadCount;
-
 
     public HashStorageService(File masterLocation, int threadCount) {
         this.masterLocation = masterLocation;
         this.hashFile = new File(masterLocation, HASH_FILE_NAME);
         this.storedHashes = new ConcurrentHashMap<>();
-        this.hashToInfoCache = new ConcurrentHashMap<>(); // Maintains reverse index for fast lookups
+        this.hashToInfoCache = new ConcurrentHashMap<>();
         this.objectMapper = new ObjectMapper();
         this.threadCount = Math.max(1, threadCount);
 
         loadStoredHashes();
     }
 
+    // ====== PUBLICZNE API ======
 
-    /**
-     * Multi-threaded version of validateAndUpdateHashes with progress callback and cancellation support.
-     */
+    public Map<String, FileHashInfo> getHashToInfoMap() {
+        return new HashMap<>(hashToInfoCache);
+    }
+
     public ValidationResult validateAndUpdateHashesMultiThreaded(
             MultiThreadedHashCalculator.ProgressCallback progressCallback,
             BooleanSupplier isCancelled) throws InterruptedException {
@@ -50,133 +50,132 @@ public class HashStorageService {
         ValidationResult result = new ValidationResult();
 
         if (!masterLocation.exists() || !masterLocation.isDirectory()) {
-            result.addError("Master location does not exist or is not a directory");
+            System.err.println("Master location does not exist or is not a directory");
             return result;
         }
 
-        // Get current files in master folder
         Map<String, File> currentFiles = scanMasterFolder();
+        if (isCancelled != null && isCancelled.getAsBoolean()) return result;
 
-        if (isCancelled != null && isCancelled.getAsBoolean()) {
-            return result;
-        }
+        List<File> filesToHash = identifyFilesToHash(currentFiles);
 
-        // Separate files into new files that need hashing and existing files that need checking
-        List<File> filesToHash = new ArrayList<>();
-
-        for (Map.Entry<String, File> entry : currentFiles.entrySet()) {
-            String relativePath = entry.getKey();
-            File file = entry.getValue();
-            FileHashInfo stored = storedHashes.get(relativePath);
-
-            if (stored == null) {
-                // New file - needs hashing
-                filesToHash.add(file);
-            } else {
-                // Check if file was modified (quick check without hashing)
-                if (file.lastModified() != stored.getLastModified() ||
-                    file.length() != stored.getFileSize()) {
-                    filesToHash.add(file);
-                }
-            }
-        }
-
-        // Hash files using multi-threaded calculator
-        long startTime = System.currentTimeMillis();
         if (!filesToHash.isEmpty()) {
-            MultiThreadedHashCalculator calculator = new MultiThreadedHashCalculator(threadCount);
-            try {
-                Map<String, String> hashedResults = calculator.calculateHashesWithCancellation(
-                    filesToHash, progressCallback, isCancelled);
-
-                long hashingTime = System.currentTimeMillis() - startTime;
-                long totalBytes = filesToHash.stream().mapToLong(File::length).sum();
-                double totalMB = totalBytes / (1024.0 * 1024.0);
-                double throughput = hashingTime > 0 ? totalMB / (hashingTime / 1000.0) : 0;
-
-                result.setProcessingTimeMs(hashingTime);
-                result.setThroughputMbPerSec(throughput);
-
-                // Update results with hashed files
-                for (File file : filesToHash) {
-                    if (isCancelled != null && isCancelled.getAsBoolean()) {
-                        break;
-                    }
-
-                    String hash = hashedResults.get(file.getAbsolutePath());
-
-                    if (hash != null) {
-                        String relativePath = getRelativePath(masterLocation, file);
-                        FileHashInfo stored = storedHashes.get(relativePath);
-
-                        if (stored == null) {
-                            // New file
-                            FileHashInfo hashInfo = new FileHashInfo(relativePath, hash,
-                                file.lastModified(), file.length());
-                            storedHashes.put(relativePath, hashInfo);
-                            hashToInfoCache.put(hash, hashInfo); // Update reverse index
-                            result.addNewFile(relativePath, hash);
-                        } else {
-                            // Modified file
-                            if (!hash.equals(stored.getHash())) {
-                                hashToInfoCache.remove(stored.getHash()); // Remove old hash from cache
-                                stored.setHash(hash);
-                                stored.setLastModified(file.lastModified());
-                                stored.setFileSize(file.length());
-                                hashToInfoCache.put(hash, stored); // Add new hash to cache
-                                result.addModifiedFile(relativePath, hash);
-                            }
-                        }
-                    }
-                }
-            } finally {
-                calculator.shutdown();
-            }
+            processFilesToHash(filesToHash, result, progressCallback, isCancelled);
         }
 
-        // Check for deleted files
         if (isCancelled == null || !isCancelled.getAsBoolean()) {
-            Set<String> currentPaths = currentFiles.keySet();
-            Iterator<Map.Entry<String, FileHashInfo>> iterator = storedHashes.entrySet().iterator();
-
-            while (iterator.hasNext()) {
-                Map.Entry<String, FileHashInfo> entry = iterator.next();
-                String storedPath = entry.getKey();
-
-                if (!currentPaths.contains(storedPath)) {
-                    FileHashInfo info = entry.getValue();
-                    iterator.remove();
-                    hashToInfoCache.remove(info.getHash()); // Update reverse index
-                    result.addDeletedFile(storedPath, info.getHash());
-                }
-            }
-
-            // Save updated hashes
+            removeDeletedFiles(currentFiles.keySet(), result);
             saveStoredHashes();
         }
 
         return result;
     }
 
-    /**
-     * Gets all stored hashes as a map of hash -> FileHashInfo.
-     * Returns the cached map directly for O(1) lookups.
-     */
-    public Map<String, FileHashInfo> getHashToInfoMap() {
-        return new HashMap<>(hashToInfoCache); // Return a defensive copy
-    }
-
-
-    /**
-     * Multi-threaded version of forceRehash with progress callback and cancellation support.
-     */
     public ValidationResult forceRehashMultiThreaded(
             MultiThreadedHashCalculator.ProgressCallback progressCallback,
             BooleanSupplier isCancelled) throws InterruptedException {
         storedHashes.clear();
-        hashToInfoCache.clear(); // Clear the reverse index
+        hashToInfoCache.clear();
         return validateAndUpdateHashesMultiThreaded(progressCallback, isCancelled);
     }
+
+    // ====== PRZETWARZANIE PLIKÓW ======
+
+    private List<File> identifyFilesToHash(Map<String, File> currentFiles) {
+        List<File> filesToHash = new ArrayList<>();
+        for (Map.Entry<String, File> entry : currentFiles.entrySet()) {
+            String relativePath = entry.getKey();
+            File file = entry.getValue();
+            FileHashInfo stored = storedHashes.get(relativePath);
+
+            if (stored == null || isFileModified(file, stored)) {
+                filesToHash.add(file);
+            }
+        }
+        return filesToHash;
+    }
+
+    private boolean isFileModified(File file, FileHashInfo stored) {
+        return file.lastModified() != stored.getLastModified() || file.length() != stored.getFileSize();
+    }
+
+    private void processFilesToHash(List<File> filesToHash,
+            ValidationResult result, MultiThreadedHashCalculator.ProgressCallback progressCallback,
+            BooleanSupplier isCancelled) throws InterruptedException {
+
+        long startTime = System.currentTimeMillis();
+        MultiThreadedHashCalculator calculator = new MultiThreadedHashCalculator(threadCount);
+
+        try {
+            Map<String, String> hashedResults = calculator.calculateHashesWithCancellation(
+                filesToHash, progressCallback, isCancelled);
+
+            updateResultsWithHashes(filesToHash, hashedResults, result, isCancelled);
+
+            long hashingTime = System.currentTimeMillis() - startTime;
+            long totalBytes = filesToHash.stream().mapToLong(File::length).sum();
+            double totalMB = totalBytes / (1024.0 * 1024.0);
+            double throughput = hashingTime > 0 ? totalMB / (hashingTime / 1000.0) : 0;
+
+            result.setProcessingTimeMs(hashingTime);
+            result.setThroughputMbPerSec(throughput);
+        } finally {
+            calculator.shutdown();
+        }
+    }
+
+    private void updateResultsWithHashes(List<File> filesToHash, Map<String, String> hashedResults,
+            ValidationResult result, BooleanSupplier isCancelled) {
+        for (File file : filesToHash) {
+            if (isCancelled != null && isCancelled.getAsBoolean()) break;
+
+            String hash = hashedResults.get(file.getAbsolutePath());
+            if (hash != null) {
+                String relativePath = getRelativePath(masterLocation, file);
+                FileHashInfo stored = storedHashes.get(relativePath);
+
+                if (stored == null) {
+                    addNewFile(relativePath, hash, file, result);
+                } else {
+                    updateModifiedFile(relativePath, hash, file, stored, result);
+                }
+            }
+        }
+    }
+
+    private void addNewFile(String relativePath, String hash, File file, ValidationResult result) {
+        FileHashInfo hashInfo = new FileHashInfo(relativePath, hash, file.lastModified(), file.length());
+        storedHashes.put(relativePath, hashInfo);
+        hashToInfoCache.put(hash, hashInfo);
+        result.addNewFile(relativePath, hash);
+    }
+
+    private void updateModifiedFile(String relativePath, String hash, File file,
+            FileHashInfo stored, ValidationResult result) {
+        if (!hash.equals(stored.getHash())) {
+            hashToInfoCache.remove(stored.getHash());
+            stored.setHash(hash);
+            stored.setLastModified(file.lastModified());
+            stored.setFileSize(file.length());
+            hashToInfoCache.put(hash, stored);
+            result.addModifiedFile(relativePath, hash);
+        }
+    }
+
+    private void removeDeletedFiles(Set<String> currentPaths, ValidationResult result) {
+        Iterator<Map.Entry<String, FileHashInfo>> iterator = storedHashes.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, FileHashInfo> entry = iterator.next();
+            if (!currentPaths.contains(entry.getKey())) {
+                FileHashInfo info = entry.getValue();
+                iterator.remove();
+                hashToInfoCache.remove(info.getHash());
+                result.addDeletedFile(entry.getKey(), info.getHash());
+            }
+        }
+    }
+
+    // ====== SKANOWANIE ======
 
     private Map<String, File> scanMasterFolder() {
         Map<String, File> files = new HashMap<>();
@@ -185,9 +184,7 @@ public class HashStorageService {
     }
 
     private void scanDirectoryRecursive(File directory, File baseDirectory, Map<String, File> files) {
-        if (!directory.exists() || !directory.isDirectory()) {
-            return;
-        }
+        if (!directory.exists() || !directory.isDirectory()) return;
 
         File[] dirFiles = directory.listFiles();
         if (dirFiles == null) return;
@@ -208,11 +205,10 @@ public class HashStorageService {
         return basePath.relativize(filePath).toString().replace('\\', '/');
     }
 
+    // ====== PERSYSTENCJA ======
 
     private void loadStoredHashes() {
-        if (!hashFile.exists()) {
-            return;
-        }
+        if (!hashFile.exists()) return;
 
         try {
             MapType mapType = objectMapper.getTypeFactory()
@@ -224,18 +220,10 @@ public class HashStorageService {
                 return;
             }
 
-            // Validate and build the reverse index (hash -> FileHashInfo) for O(1) lookups
-            int validCount = 0;
-            int invalidCount = 0;
-
+            int validCount = 0, invalidCount = 0;
             for (Map.Entry<String, FileHashInfo> entry : loaded.entrySet()) {
                 FileHashInfo info = entry.getValue();
-
-                // Validate hash info data
-                if (info != null && info.getHash() != null && !info.getHash().isEmpty()
-                    && info.getRelativePath() != null && !info.getRelativePath().isEmpty()
-                    && info.getFileSize() >= 0 && info.getLastModified() > 0) {
-
+                if (isValidHashInfo(info)) {
                     storedHashes.put(entry.getKey(), info);
                     hashToInfoCache.put(info.getHash(), info);
                     validCount++;
@@ -247,10 +235,16 @@ public class HashStorageService {
             if (invalidCount > 0) {
                 System.err.println("Warning: Skipped " + invalidCount + " invalid hash entries. Loaded " + validCount + " valid entries.");
             }
-
         } catch (IOException e) {
             System.err.println("Failed to load stored hashes: " + e.getMessage());
         }
+    }
+
+    private boolean isValidHashInfo(FileHashInfo info) {
+        return info != null &&
+               info.getHash() != null && !info.getHash().isEmpty() &&
+               info.getRelativePath() != null && !info.getRelativePath().isEmpty() &&
+               info.getFileSize() >= 0 && info.getLastModified() > 0;
     }
 
     private void saveStoredHashes() {
@@ -261,18 +255,21 @@ public class HashStorageService {
         }
     }
 
+    // ====== KLASY WEWNĘTRZNE ======
+
     /**
-     * Information about a file's hash and metadata.
+     * Informacje o haszu pliku przechowywane w JSON.
+     * Pusty konstruktor i settery są wymagane przez Jackson do deserializacji.
      */
+    @SuppressWarnings("unused") // Używane przez Jackson do deserializacji JSON
     public static class FileHashInfo {
         private String relativePath;
         private String hash;
         private long lastModified;
         private long fileSize;
 
-        // Default constructor for Jackson deserialization
-        public FileHashInfo() {
-        }
+        /** Wymagany przez Jackson do deserializacji */
+        public FileHashInfo() {}
 
         public FileHashInfo(String relativePath, String hash, long lastModified, long fileSize) {
             this.relativePath = relativePath;
@@ -281,16 +278,13 @@ public class HashStorageService {
             this.fileSize = fileSize;
         }
 
-        // Getters and setters
         public String getRelativePath() { return relativePath; }
+        /** Wymagany przez Jackson do deserializacji */
         public void setRelativePath(String relativePath) { this.relativePath = relativePath; }
-
         public String getHash() { return hash; }
         public void setHash(String hash) { this.hash = hash; }
-
         public long getLastModified() { return lastModified; }
         public void setLastModified(long lastModified) { this.lastModified = lastModified; }
-
         public long getFileSize() { return fileSize; }
         public void setFileSize(long fileSize) { this.fileSize = fileSize; }
 
@@ -299,18 +293,13 @@ public class HashStorageService {
         }
     }
 
-    /**
-     * Result of validation operation.
-     */
     public static class ValidationResult {
-        private final List<String> errors = new ArrayList<>();
         private final Map<String, String> newFiles = new HashMap<>();
         private final Map<String, String> modifiedFiles = new HashMap<>();
         private final Map<String, String> deletedFiles = new HashMap<>();
         private long processingTimeMs = 0;
         private double throughputMbPerSec = 0.0;
 
-        public void addError(String error) { errors.add(error); }
         public void addNewFile(String path, String hash) { newFiles.put(path, hash); }
         public void addModifiedFile(String path, String hash) { modifiedFiles.put(path, hash); }
         public void addDeletedFile(String path, String hash) { deletedFiles.put(path, hash); }
@@ -327,24 +316,11 @@ public class HashStorageService {
             return newFiles.size() + modifiedFiles.size() + deletedFiles.size();
         }
 
-        public void setProcessingTimeMs(long processingTimeMs) {
-            this.processingTimeMs = processingTimeMs;
-        }
+        public void setProcessingTimeMs(long processingTimeMs) { this.processingTimeMs = processingTimeMs; }
+        public long getProcessingTimeMs() { return processingTimeMs; }
+        public void setThroughputMbPerSec(double throughputMbPerSec) { this.throughputMbPerSec = throughputMbPerSec; }
+        public double getThroughputMbPerSec() { return throughputMbPerSec; }
 
-        public long getProcessingTimeMs() {
-            return processingTimeMs;
-        }
-
-        public void setThroughputMbPerSec(double throughputMbPerSec) {
-            this.throughputMbPerSec = throughputMbPerSec;
-        }
-
-        public double getThroughputMbPerSec() {
-            return throughputMbPerSec;
-        }
-
-        public String getFormattedDuration() {
-            return FileUtilities.formatDuration(processingTimeMs);
-        }
+        public String getFormattedDuration() { return FileUtilities.formatDuration(processingTimeMs); }
     }
 }

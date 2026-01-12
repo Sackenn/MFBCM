@@ -12,175 +12,165 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
 /**
- * Multi-threaded file hashing utility for calculating xxHash3 hashes of multiple files concurrently.
- * xxHash3 is the latest and fastest variant of xxHash, optimized for modern CPUs.
+ * Wielowątkowy kalkulator hashy xxHash3 dla plików.
+ * Zoptymalizowany dla dużych plików z wykorzystaniem próbkowania fragmentów.
  */
 public class MultiThreadedHashCalculator {
 
     private static final AtomicInteger POOL_NUMBER = new AtomicInteger(1);
     private static final int SMALL_FILE_THRESHOLD_MB = 100;
-    private static final int SLOW_FILE_THRESHOLD_MS = 5000;
-    private static final long LARGE_FILE_THRESHOLD_MB = 500;
+    private static final int LARGE_FILE_THRESHOLD_MB = 500;
+    private static final int CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+    private static final int NUM_CHUNKS = 10;
 
     private final int threadCount;
     private final ExecutorService executor;
-    private final boolean ownsExecutor; // Track if we created the executor
+    private final boolean ownsExecutor;
 
     public MultiThreadedHashCalculator(int threadCount) {
         this.threadCount = Math.max(1, threadCount);
 
-        // Use ForkJoinPool for better work-stealing on modern CPUs
-        // Falls back to fixed thread pool for compatibility
         if (this.threadCount == Runtime.getRuntime().availableProcessors()) {
-            // Use common pool when using all CPUs for better efficiency
             this.executor = ForkJoinPool.commonPool();
-            this.ownsExecutor = false; // Don't shut down common pool
+            this.ownsExecutor = false;
         } else {
-            // Create custom thread pool with meaningful names
-            final int poolNum = POOL_NUMBER.getAndIncrement();
-            ThreadFactory threadFactory = new ThreadFactory() {
-                private final AtomicInteger threadNum = new AtomicInteger(1);
-                @Override
-                public Thread newThread(Runnable r) {
-                    Thread t = new Thread(r, "HashCalculator-" + poolNum + "-" + threadNum.getAndIncrement());
-                    t.setDaemon(false);
-                    return t;
-                }
-            };
-
-            this.executor = Executors.newFixedThreadPool(this.threadCount, threadFactory);
-            this.ownsExecutor = true; // We own this pool and must shut it down
+            int poolNum = POOL_NUMBER.getAndIncrement();
+            AtomicInteger threadNum = new AtomicInteger(1);
+            this.executor = Executors.newFixedThreadPool(this.threadCount, r -> {
+                Thread t = new Thread(r, "HashCalculator-" + poolNum + "-" + threadNum.getAndIncrement());
+                t.setDaemon(false);
+                return t;
+            });
+            this.ownsExecutor = true;
         }
         System.out.println("MultiThreadedHashCalculator initialized with " + this.threadCount + " threads");
     }
 
-
-    /**
-     * Calculates xxHash3 hashes for files with cancellation support using an efficient work queue pattern.
-     */
     public Map<String, String> calculateHashesWithCancellation(List<File> files,
-            ProgressCallback progressCallback, BooleanSupplier isCancelled)
-            throws InterruptedException {
+            ProgressCallback progressCallback, BooleanSupplier isCancelled) throws InterruptedException {
 
         long startTime = System.currentTimeMillis();
-        if (files.size() > 100) { // Only log for significant operations
-            System.out.println("Starting multi-threaded hash calculation of " + files.size() + " files using " + threadCount + " threads");
-        }
+        System.out.println("Starting multi-threaded hash calculation of " + files.size() + " files using " + threadCount + " threads");
 
         Map<String, String> results = new ConcurrentHashMap<>();
         AtomicInteger completed = new AtomicInteger(0);
         AtomicInteger errors = new AtomicInteger(0);
         AtomicInteger fileIndex = new AtomicInteger(0);
         AtomicInteger progressReportCounter = new AtomicInteger(0);
-
-        // Use CountDownLatch to wait for all threads to complete
         CountDownLatch latch = new CountDownLatch(threadCount);
 
-        // Determine batch size for progress updates (reduces contention)
-        int progressBatchSize = Math.max(1, files.size() / 100); // Update every 1%
+        int progressBatchSize = Math.max(1, files.size() / 1000);
 
-        // Create and start worker threads
         for (int i = 0; i < threadCount; i++) {
-            executor.submit(() -> {
-                // Only log thread start for debugging if needed
-                // System.out.println("Worker thread " + Thread.currentThread().getName() + " started");
-
-                try {
-                    while (true) {
-                        // Check for cancellation
-                        if (isCancelled != null && isCancelled.getAsBoolean()) {
-                            // System.out.println("Thread " + threadName + " cancelled");
-                            break;
-                        }
-
-                        // Get next file to process
-                        int currentIndex = fileIndex.getAndIncrement();
-                        if (currentIndex >= files.size()) {
-                            break; // No more files to process
-                        }
-
-                        File file = files.get(currentIndex);
-
-                        try {
-                            long fileStart = System.currentTimeMillis();
-                            String hash = calculateFileHash(file);
-                            long fileTime = System.currentTimeMillis() - fileStart;
-
-                            if (hash != null && (isCancelled == null || !isCancelled.getAsBoolean())) {
-                                results.put(file.getAbsolutePath(), hash);
-                                // Only log very slow files (> 5 seconds) or very large files
-                                long largeFileThreshold = LARGE_FILE_THRESHOLD_MB * 1024L * 1024L;
-                                if (fileTime > SLOW_FILE_THRESHOLD_MS || file.length() > largeFileThreshold) {
-                                    System.out.println("Processed large/slow file: " + file.getName() +
-                                                     " (" + (file.length()/1024/1024) + "MB) in " + fileTime + "ms");
-                                }
-                            } else if (hash == null) {
-                                errors.incrementAndGet();
-                            }
-                        } catch (Exception e) {
-                            if (isCancelled == null || !isCancelled.getAsBoolean()) {
-                                System.err.println("Error hashing file " + file.getAbsolutePath() + ": " + e.getMessage());
-                                errors.incrementAndGet();
-                            }
-                        }
-
-                        // Report progress in batches to reduce contention
-                        int current = completed.incrementAndGet();
-                        if (progressCallback != null && (isCancelled == null || !isCancelled.getAsBoolean())) {
-                            int reportCount = progressReportCounter.incrementAndGet();
-                            // Report every batch or on last file
-                            if (reportCount % progressBatchSize == 0 || current == files.size()) {
-                                progressCallback.onProgress(current, files.size(), file.getName(), errors.get());
-                            }
-                        }
-                    }
-                } finally {
-                    // System.out.println("Worker thread " + threadName + " finished");
-                    latch.countDown();
-                }
-            });
+            executor.submit(() -> processFiles(files, results, fileIndex, completed, errors,
+                progressReportCounter, progressBatchSize, progressCallback, isCancelled, latch));
         }
 
-        // Wait for all threads to complete or handle cancellation
-        if (isCancelled != null) {
-            while (latch.getCount() > 0) {
-                if (isCancelled.getAsBoolean()) {
-                    System.out.println("Cancellation requested, waiting for threads to finish...");
-                    break;
-                }
-                if (!latch.await(100, TimeUnit.MILLISECONDS)) {
-                    // Continue waiting
-                }
-            }
-        } else {
-            latch.await();
-        }
+        waitForCompletion(latch, isCancelled);
 
         long totalTime = System.currentTimeMillis() - startTime;
-        double avgTimePerFile = files.isEmpty() ? 0 : (double) totalTime / files.size();
-        double mbPerSecond = calculateThroughput(files, totalTime);
+        logCompletionStats(files, results.size(), errors.get(), totalTime);
 
-        System.out.println("Multi-threaded hash calculation completed:");
-        System.out.println("- Files processed: " + results.size() + "/" + files.size());
-        System.out.println("- Total time: " + totalTime + "ms");
-        System.out.println("- Average per file: " + String.format("%.1f", avgTimePerFile) + "ms");
-        System.out.println("- Throughput: " + String.format("%.1f", mbPerSecond) + " MB/s");
-        System.out.println("- Threads used: " + threadCount);
-        System.out.println("- Errors: " + errors.get());
-
-        // Send final progress update with timing information
         if (progressCallback != null && (isCancelled == null || !isCancelled.getAsBoolean())) {
-            String timeStr = FileUtilities.formatDuration(totalTime);
-            String timingMessage = "Completed in " + timeStr + " (" + String.format("%.1f", mbPerSecond) + " MB/s)";
+            double mbPerSecond = calculateThroughput(files, totalTime);
+            String timingMessage = "Completed in " + FileUtilities.formatDuration(totalTime) +
+                                  " (" + String.format("%.1f", mbPerSecond) + " MB/s)";
             progressCallback.onProgress(results.size(), files.size(), timingMessage, errors.get());
         }
 
         return results;
     }
 
-    /**
-     * Calculates throughput in MB/s for performance monitoring.
-     */
+    private void processFiles(List<File> files, Map<String, String> results, AtomicInteger fileIndex,
+            AtomicInteger completed, AtomicInteger errors, AtomicInteger progressReportCounter,
+            int progressBatchSize, ProgressCallback progressCallback, BooleanSupplier isCancelled,
+            CountDownLatch latch) {
+        try {
+            while (true) {
+                if (isCancelled != null && isCancelled.getAsBoolean()) break;
+
+                int currentIndex = fileIndex.getAndIncrement();
+                if (currentIndex >= files.size()) break;
+
+                File file = files.get(currentIndex);
+                processFile(file, results, errors, isCancelled);
+
+                int current = completed.incrementAndGet();
+                reportProgress(current, files.size(), file.getName(), errors.get(),
+                    progressReportCounter, progressBatchSize, progressCallback, isCancelled);
+            }
+        } finally {
+            latch.countDown();
+        }
+    }
+
+    private void processFile(File file, Map<String, String> results, AtomicInteger errors, BooleanSupplier isCancelled) {
+        try {
+            long fileStart = System.currentTimeMillis();
+            String hash = calculateFileHash(file);
+
+            if (hash != null && (isCancelled == null || !isCancelled.getAsBoolean())) {
+                results.put(file.getAbsolutePath(), hash);
+                logLargeFileProcessing(file, fileStart);
+            } else if (hash == null) {
+                errors.incrementAndGet();
+            }
+        } catch (Exception e) {
+            if (isCancelled == null || !isCancelled.getAsBoolean()) {
+                System.err.println("Error hashing file " + file.getAbsolutePath() + ": " + e.getMessage());
+                errors.incrementAndGet();
+            }
+        }
+    }
+
+    private void logLargeFileProcessing(File file, long startTime) {
+        long largeFileThreshold = LARGE_FILE_THRESHOLD_MB * 1024L * 1024L;
+        if (file.length() > largeFileThreshold) {
+            long duration = System.currentTimeMillis() - startTime;
+            System.out.println("Processed large file: " + file.getName() +
+                " (" + (file.length() / 1024 / 1024) + "MB) in " + duration + "ms");
+        }
+    }
+
+    private void reportProgress(int current, int total, String fileName, int errorCount,
+            AtomicInteger progressReportCounter, int progressBatchSize,
+            ProgressCallback progressCallback, BooleanSupplier isCancelled) {
+        if (progressCallback != null && (isCancelled == null || !isCancelled.getAsBoolean())) {
+            int reportCount = progressReportCounter.incrementAndGet();
+            if (reportCount % progressBatchSize == 0 || current == total) {
+                progressCallback.onProgress(current, total, fileName, errorCount);
+            }
+        }
+    }
+
+    private void waitForCompletion(CountDownLatch latch, BooleanSupplier isCancelled) throws InterruptedException {
+        if (isCancelled != null) {
+            while (latch.getCount() > 0) {
+                if (isCancelled.getAsBoolean()) {
+                    System.out.println("Cancellation requested, waiting for threads to finish...");
+                    break;
+                }
+                @SuppressWarnings("unused")
+                boolean completed = latch.await(100, TimeUnit.MILLISECONDS);
+            }
+        } else {
+            latch.await();
+        }
+    }
+
+    private void logCompletionStats(List<File> files, int resultCount, int errorCount, long totalTime) {
+        double avgTimePerFile = files.isEmpty() ? 0 : (double) totalTime / files.size();
+        double mbPerSecond = calculateThroughput(files, totalTime);
+
+        System.out.println("Multi-threaded hash calculation completed:");
+        System.out.println("- Files processed: " + resultCount + "/" + files.size());
+        System.out.println("- Total time: " + totalTime + "ms");
+        System.out.println("- Average per file: " + String.format("%.1f", avgTimePerFile) + "ms");
+        System.out.println("- Throughput: " + String.format("%.1f", mbPerSecond) + " MB/s");
+        System.out.println("- Threads used: " + threadCount);
+        System.out.println("- Errors: " + errorCount);
+    }
+
     private double calculateThroughput(List<File> files, long totalTimeMs) {
         long totalBytes = files.stream().mapToLong(File::length).sum();
         double totalMB = totalBytes / (1024.0 * 1024.0);
@@ -188,101 +178,81 @@ public class MultiThreadedHashCalculator {
         return totalSeconds > 0 ? totalMB / totalSeconds : 0;
     }
 
-
-    /**
-     * Calculates xxHash3 hash for a single file using the most efficient method based on file size.
-     * xxHash3 is the latest and fastest variant of xxHash, optimized for modern CPUs.
-     * For files > 100MB, reads ten equally spaced 10MB chunks for faster processing.
-     */
     private String calculateFileHash(File file) {
         try {
-            // Use xxHash3 which is the fastest variant
             LongHashFunction hashFunction = LongHashFunction.xx3();
-
             long fileSize = file.length();
             long smallFileThreshold = SMALL_FILE_THRESHOLD_MB * 1024L * 1024L;
 
-            // For small to medium files (< 100MB), read into memory
             if (fileSize < smallFileThreshold) {
-                try (FileInputStream fis = new FileInputStream(file)) {
-                    // Use readAllBytes() for simplicity and correctness
-                    byte[] fileBytes = fis.readAllBytes();
-                    long hash = hashFunction.hashBytes(fileBytes);
-                    return String.format("%016x", hash);
-                }
+                return hashSmallFile(file, hashFunction);
             } else {
-                // For large files (>= 100MB), read 10 equally spaced 10MB chunks
-                // This provides good uniqueness while being much faster
-                try (FileInputStream fis = new FileInputStream(file)) {
-                    final int NUM_CHUNKS = 10;
-                    final int CHUNK_SIZE = 10 * 1024 * 1024; // 10MB per chunk
-
-                    // Calculate spacing between chunks
-                    long spacing = fileSize / NUM_CHUNKS;
-
-                    byte[] buffer = new byte[CHUNK_SIZE];
-                    long hash = 0;
-                    boolean first = true;
-
-                    for (int i = 0; i < NUM_CHUNKS; i++) {
-                        // Calculate position for this chunk
-                        long position = i * spacing;
-
-                        // Skip to the position
-                        fis.skip(position - (i > 0 ? (i - 1) * spacing + CHUNK_SIZE : 0));
-
-                        // Read up to CHUNK_SIZE bytes (or less if near end of file)
-                        int toRead = (int) Math.min(CHUNK_SIZE, fileSize - position);
-                        int bytesRead;
-                        int totalRead = 0;
-
-                        // Ensure we read the full chunk (or remaining file)
-                        while (totalRead < toRead && (bytesRead = fis.read(buffer, totalRead, toRead - totalRead)) != -1) {
-                            totalRead += bytesRead;
-                        }
-
-                        if (totalRead > 0) {
-                            if (first) {
-                                hash = hashFunction.hashBytes(buffer, 0, totalRead);
-                                first = false;
-                            } else {
-                                // Combine with rotation for better distribution
-                                long chunkHash = hashFunction.hashBytes(buffer, 0, totalRead);
-                                hash = Long.rotateLeft(hash, 1) ^ chunkHash;
-                            }
-                        }
-                    }
-
-                    return String.format("%016x", hash);
-                }
+                return hashLargeFile(file, hashFunction, fileSize);
             }
-        } catch (OutOfMemoryError e) {
-            System.err.println("OUT OF MEMORY hashing file " + file.getAbsolutePath() +
-                             " (size: " + (file.length() / 1024 / 1024) + " MB): " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        } catch (IOException e) {
-            System.err.println("IO ERROR hashing file " + file.getAbsolutePath() +
-                             " (size: " + (file.length() / 1024 / 1024) + " MB): " + e.getMessage());
-            e.printStackTrace();
+        } catch (OutOfMemoryError | IOException e) {
+            logHashError(file, e);
             return null;
         } catch (Exception e) {
             System.err.println("UNEXPECTED ERROR hashing file " + file.getAbsolutePath() +
-                             " (size: " + (file.length() / 1024 / 1024) + " MB): " + e.getClass().getName() + " - " + e.getMessage());
-            e.printStackTrace();
+                " (size: " + (file.length() / 1024 / 1024) + " MB): " + e.getClass().getName() + " - " + e.getMessage());
             return null;
         }
     }
 
-    /**
-     * Shuts down the thread pool. Call this when done with the calculator.
-     * Note: Does not shut down ForkJoinPool.commonPool() as it's shared.
-     */
-    public void shutdown() {
-        if (!ownsExecutor) {
-            // Don't shut down common pool - it's shared
-            return;
+    private String hashSmallFile(File file, LongHashFunction hashFunction) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] fileBytes = fis.readAllBytes();
+            return String.format("%016x", hashFunction.hashBytes(fileBytes));
         }
+    }
+
+    private String hashLargeFile(File file, LongHashFunction hashFunction, long fileSize) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            long spacing = fileSize / NUM_CHUNKS;
+            byte[] buffer = new byte[CHUNK_SIZE];
+            long hash = 0;
+            long currentPosition = 0;
+
+            for (int i = 0; i < NUM_CHUNKS; i++) {
+                long targetPosition = i * spacing;
+                long skipAmount = targetPosition - currentPosition;
+
+                if (skipAmount > 0) {
+                    long skipped = fis.skip(skipAmount);
+                    currentPosition += skipped;
+                }
+
+                int toRead = (int) Math.min(CHUNK_SIZE, fileSize - targetPosition);
+                int totalRead = readFully(fis, buffer, toRead);
+                currentPosition += totalRead;
+
+                if (totalRead > 0) {
+                    long chunkHash = hashFunction.hashBytes(buffer, 0, totalRead);
+                    hash = (i == 0) ? chunkHash : Long.rotateLeft(hash, 1) ^ chunkHash;
+                }
+            }
+
+            return String.format("%016x", hash);
+        }
+    }
+
+    private int readFully(FileInputStream fis, byte[] buffer, int toRead) throws IOException {
+        int totalRead = 0;
+        int bytesRead;
+        while (totalRead < toRead && (bytesRead = fis.read(buffer, totalRead, toRead - totalRead)) != -1) {
+            totalRead += bytesRead;
+        }
+        return totalRead;
+    }
+
+    private void logHashError(File file, Throwable e) {
+        String errorType = e instanceof OutOfMemoryError ? "OUT OF MEMORY" : "IO ERROR";
+        System.err.println(errorType + " hashing file " + file.getAbsolutePath() +
+            " (size: " + (file.length() / 1024 / 1024) + " MB): " + e.getMessage());
+    }
+
+    public void shutdown() {
+        if (!ownsExecutor) return;
 
         executor.shutdown();
         try {
@@ -295,19 +265,8 @@ public class MultiThreadedHashCalculator {
         }
     }
 
-
-    /**
-     * Callback interface for progress reporting.
-     */
+    @FunctionalInterface
     public interface ProgressCallback {
-        /**
-         * Called when progress is made.
-         *
-         * @param current Number of files processed
-         * @param total Total number of files
-         * @param currentFile Name of current file being processed
-         * @param errors Number of errors encountered so far
-         */
         void onProgress(int current, int total, String currentFile, int errors);
     }
 }

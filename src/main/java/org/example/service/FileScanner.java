@@ -8,14 +8,14 @@ import org.example.util.FileUtilities;
 import javax.swing.*;
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.CancellationException;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Service class responsible for scanning directories and finding multimedia files.
- * Uses xxHash3 for ultra-fast file hashing with zero-allocation performance.
+ * Serwis skanowania katalogów i znajdowania plików multimedialnych.
+ * Używa xxHash3 dla ultra-szybkiego haszowania plików.
  */
 public class FileScanner extends SwingWorker<List<BackupFile>, String> {
-
 
     private final BackupConfiguration configuration;
     private final ScanProgressCallback progressCallback;
@@ -29,9 +29,7 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
     }
 
     public FileScanner(BackupConfiguration configuration, ScanProgressCallback progressCallback) {
-        if (configuration == null) {
-            throw new IllegalArgumentException("configuration cannot be null");
-        }
+        Objects.requireNonNull(configuration, "configuration cannot be null");
         if (configuration.getSourceDirectories().isEmpty()) {
             throw new IllegalArgumentException("Source directories cannot be empty");
         }
@@ -43,11 +41,25 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
     @Override
     protected List<BackupFile> doInBackground() throws Exception {
         long startTime = System.currentTimeMillis();
-        List<BackupFile> foundFiles = new ArrayList<>();
-        Set<String> seenHashes = new HashSet<>();
 
-        // First pass: collect all multimedia files from all source directories
         publish("Collecting files...");
+        List<File> allFiles = collectAllFiles();
+        totalFiles = allFiles.size();
+        scannedFiles = 0;
+
+        if (allFiles.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<BackupFile> foundFiles = configuration.isSkipHashing()
+            ? scanWithMetadata(allFiles)
+            : scanWithHashing(allFiles);
+
+        publishTimingInfo(foundFiles, startTime);
+        return foundFiles;
+    }
+
+    private List<File> collectAllFiles() throws CancellationException {
         List<File> allFiles = new ArrayList<>();
         for (File sourceDir : configuration.getSourceDirectories()) {
             if (isCancelled()) {
@@ -55,78 +67,141 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
             }
             FileUtilities.collectFilesFromDirectory(sourceDir, allFiles, configuration, this::isCancelled);
         }
+        return allFiles;
+    }
 
-        totalFiles = allFiles.size();
-        scannedFiles = 0;
+    // ====== SKANOWANIE BEZ HASZOWANIA ======
 
-        if (allFiles.isEmpty()) {
-            return foundFiles;
+    private List<BackupFile> scanWithMetadata(List<File> allFiles) {
+        Map<String, BackupFile> metadataMap = new ConcurrentHashMap<>();
+        List<BackupFile> allBackupFiles = new CopyOnWriteArrayList<>();
+        AtomicInteger processedCount = new AtomicInteger(0);
+
+        ExecutorService executor = Executors.newFixedThreadPool(configuration.getHashingThreadCount(),
+            r -> {
+                Thread t = new Thread(r, "MetadataScanner-" + System.currentTimeMillis());
+                t.setDaemon(false);
+                return t;
+            });
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (File file : allFiles) {
+                futures.add(executor.submit(() ->
+                    processFileMetadata(file, metadataMap, allBackupFiles, processedCount)));
+            }
+            waitForFutures(futures);
+        } finally {
+            FileUtilities.shutdownExecutor(executor, 5);
         }
 
-        // Use multi-threaded hash calculation for all collected files
-        MultiThreadedHashCalculator calculator = new MultiThreadedHashCalculator(
-            configuration.getHashingThreadCount());
+        return new ArrayList<>(allBackupFiles);
+    }
+
+    private void processFileMetadata(File file, Map<String, BackupFile> metadataMap,
+            List<BackupFile> allBackupFiles, AtomicInteger processedCount) {
+        if (isCancelled()) return;
 
         try {
-            MultiThreadedHashCalculator.ProgressCallback progressCallback =
-                (current, total, currentFile, _) -> {
-                    scannedFiles = current;
-                    if (!isCancelled()) {
-                        publish("Scanning: " + currentFile + " (" + current + "/" + total + ")");
-                    }
-                };
+            String metadataKey = file.getName() + "|" + file.length();
+            BackupFile backupFile = new BackupFile(file, null);
 
+            BackupFile existing = metadataMap.putIfAbsent(metadataKey, backupFile);
+            if (existing != null) {
+                backupFile.setStatus(BackupFile.BackupStatus.DUPLICATE);
+                backupFile.setSelected(false);
+            }
+
+            allBackupFiles.add(backupFile);
+
+            int current = processedCount.incrementAndGet();
+            if (current % 100 == 0 || current == totalFiles) {
+                scannedFiles = current;
+                publish("Collecting: " + file.getName() + " (" + current + "/" + totalFiles + ")");
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing file metadata: " + file.getAbsolutePath() + " - " + e.getMessage());
+        }
+    }
+
+    // ====== SKANOWANIE Z HASZOWANIEM ======
+
+    private List<BackupFile> scanWithHashing(List<File> allFiles) throws InterruptedException {
+        List<BackupFile> foundFiles = new ArrayList<>();
+        Set<String> seenHashes = new HashSet<>();
+
+        MultiThreadedHashCalculator calculator = new MultiThreadedHashCalculator(configuration.getHashingThreadCount());
+        try {
             Map<String, String> fileHashes = calculator.calculateHashesWithCancellation(
-                allFiles, progressCallback, this::isCancelled);
+                allFiles, createProgressCallback(), this::isCancelled);
 
-            // Process results and create BackupFile objects
             for (File file : allFiles) {
-                if (isCancelled()) {
-                    break;
-                }
+                if (isCancelled()) break;
 
                 String hash = fileHashes.get(file.getAbsolutePath());
                 if (hash != null) {
-                    // Check for duplicates within the scanned files
+                    BackupFile backupFile = new BackupFile(file, hash);
+
                     if (seenHashes.contains(hash)) {
-                        // Duplicate file found
-                        BackupFile backupFile = new BackupFile(file, hash);
                         backupFile.setStatus(BackupFile.BackupStatus.DUPLICATE);
-                        backupFile.setSelected(false); // Auto-uncheck duplicates
-                        foundFiles.add(backupFile);
+                        backupFile.setSelected(false);
                     } else {
                         seenHashes.add(hash);
-                        foundFiles.add(new BackupFile(file, hash));
                     }
+
+                    foundFiles.add(backupFile);
                 }
             }
         } finally {
             calculator.shutdown();
         }
 
-        // Send final timing information
+        return foundFiles;
+    }
+
+    private MultiThreadedHashCalculator.ProgressCallback createProgressCallback() {
+        return (current, total, currentFile, _) -> {
+            scannedFiles = current;
+            if (!isCancelled()) {
+                publish("Scanning: " + currentFile + " (" + current + "/" + total + ")");
+            }
+        };
+    }
+
+    // ====== METODY POMOCNICZE ======
+
+    private void publishTimingInfo(List<BackupFile> foundFiles, long startTime) {
         long totalTime = System.currentTimeMillis() - startTime;
         long totalBytes = foundFiles.stream().mapToLong(f -> f.getSourceFile().length()).sum();
         double totalMB = totalBytes / (1024.0 * 1024.0);
         double throughput = totalTime > 0 ? totalMB / (totalTime / 1000.0) : 0;
 
-        String timeStr = FileUtilities.formatDuration(totalTime);
-        String timingMessage = "Completed in " + timeStr + " (" + String.format("%.1f", throughput) + " MB/s)";
+        String timingMessage = "Completed in " + FileUtilities.formatDuration(totalTime) +
+                              " (" + String.format("%.1f", throughput) + " MB/s)";
 
-        // Send final progress with timing
         if (progressCallback != null) {
             progressCallback.updateProgress(foundFiles.size(), totalFiles, timingMessage);
         }
+    }
 
-        return foundFiles;
+
+    private void waitForFutures(List<Future<?>> futures) {
+        for (Future<?> future : futures) {
+            if (isCancelled()) break;
+            try {
+                future.get();
+            } catch (CancellationException | InterruptedException e) {
+                // Ignoruj anulowane zadania
+            } catch (ExecutionException e) {
+                System.err.println("Error in metadata processing: " + e.getMessage());
+            }
+        }
     }
 
 
     @Override
     protected void process(List<String> chunks) {
         if (progressCallback != null && !chunks.isEmpty()) {
-            String currentFile = chunks.get(chunks.size() - 1);
-            progressCallback.updateProgress(scannedFiles, totalFiles, currentFile);
+            progressCallback.updateProgress(scannedFiles, totalFiles, chunks.getLast());
         }
     }
 
@@ -138,13 +213,9 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
                 progressCallback.scanCompleted(result);
             }
         } catch (CancellationException e) {
-            if (progressCallback != null) {
-                progressCallback.scanFailed("Scan was cancelled");
-            }
+            if (progressCallback != null) progressCallback.scanFailed("Scan was cancelled");
         } catch (Exception e) {
-            if (progressCallback != null) {
-                progressCallback.scanFailed("Scan failed: " + e.getMessage());
-            }
+            if (progressCallback != null) progressCallback.scanFailed("Scan failed: " + e.getMessage());
         }
     }
 }

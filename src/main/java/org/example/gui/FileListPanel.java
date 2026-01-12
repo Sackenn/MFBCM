@@ -3,18 +3,21 @@ package org.example.gui;
 import org.example.model.BackupFile;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.example.gui.UIConstants.*;
+
+
 /**
- * Panel that displays the list of multimedia files found during scanning.
+ * Panel wyświetlający listę plików do kopii zapasowej w formie tabeli.
  */
 public class FileListPanel extends JPanel {
 
@@ -23,47 +26,27 @@ public class FileListPanel extends JPanel {
     private final JLabel summaryLabel;
     private JCheckBox selectAllCheckBox;
     private JComboBox<String> filterComboBox;
+    private Runnable selectionChangeListener;
 
     public FileListPanel() {
         setLayout(new BorderLayout(5, 5));
-        setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(80, 80, 80), 1),
-                "Found Files",
-                TitledBorder.LEFT,
-                TitledBorder.TOP,
-                new Font("Segoe UI", Font.BOLD, 13),
-                new Color(200, 200, 200)
-            ),
-            BorderFactory.createEmptyBorder(5, 5, 5, 5)
-        ));
+        setBorder(createTitledBorder("Found Files"));
 
-        // Create components
         tableModel = new FileTableModel();
         fileTable = new JTable(tableModel);
-        fileTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        fileTable.setRowHeight(28);
-        fileTable.setShowGrid(false);
-        fileTable.setIntercellSpacing(new Dimension(0, 0));
         setupTable();
 
-        // Create control panel
-        JPanel controlPanel = createControlPanel();
-        add(controlPanel, BorderLayout.NORTH);
+        add(createControlPanel(), BorderLayout.NORTH);
 
-        // Add table in scroll pane with modern styling
         JScrollPane scrollPane = new JScrollPane(fileTable);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(70, 74, 82), 1));
-        scrollPane.getViewport().setBackground(new Color(45, 49, 57));
+        scrollPane.setBorder(BorderFactory.createLineBorder(BORDER_COLOR, 1));
+        scrollPane.getViewport().setBackground(BG_SECONDARY);
         add(scrollPane, BorderLayout.CENTER);
 
-        // Summary panel with modern styling
-        summaryLabel = new JLabel("No files loaded");
-        summaryLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        summaryLabel.setForeground(new Color(180, 180, 180));
+        summaryLabel = createLabel("No files loaded", FONT_REGULAR, TEXT_SECONDARY);
         JPanel summaryPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 8));
-        summaryPanel.setBackground(new Color(40, 44, 52));
-        summaryPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(70, 74, 82)));
+        summaryPanel.setBackground(BG_PRIMARY);
+        summaryPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER_COLOR));
         summaryPanel.add(summaryLabel);
         add(summaryPanel, BorderLayout.SOUTH);
     }
@@ -72,23 +55,16 @@ public class FileListPanel extends JPanel {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
         panel.setOpaque(false);
 
-        // Select all checkbox
-        selectAllCheckBox = new JCheckBox("Select All");
-        selectAllCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        selectAllCheckBox.setFocusPainted(false);
+        selectAllCheckBox = createCheckBox("Select All", false);
         selectAllCheckBox.addActionListener(_ -> {
-            boolean selected = selectAllCheckBox.isSelected();
-            tableModel.setAllSelected(selected);
+            tableModel.setAllSelected(selectAllCheckBox.isSelected());
             updateSummary();
         });
         panel.add(selectAllCheckBox);
 
-        // Filter dropdown
-        JLabel filterLabel = new JLabel("Filter:");
-        filterLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        panel.add(filterLabel);
+        panel.add(createLabel("Filter:"));
         filterComboBox = new JComboBox<>(new String[]{"All", "Images", "Videos", "Selected", "Duplicates"});
-        filterComboBox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        filterComboBox.setFont(FONT_REGULAR);
         filterComboBox.addActionListener(_ -> applyFilter());
         panel.add(filterComboBox);
 
@@ -96,33 +72,26 @@ public class FileListPanel extends JPanel {
     }
 
     private void setupTable() {
-        // Set column widths for better proportions
-        fileTable.getColumnModel().getColumn(0).setPreferredWidth(40);  // Checkbox
-        fileTable.getColumnModel().getColumn(0).setMaxWidth(50);
-        fileTable.getColumnModel().getColumn(1).setPreferredWidth(250); // Name
-        fileTable.getColumnModel().getColumn(2).setPreferredWidth(350); // Path
-        fileTable.getColumnModel().getColumn(3).setPreferredWidth(90);  // Size
-        fileTable.getColumnModel().getColumn(4).setPreferredWidth(140); // Date
-        fileTable.getColumnModel().getColumn(5).setPreferredWidth(80);  // Type
-        fileTable.getColumnModel().getColumn(6).setPreferredWidth(100); // Status
+        styleTable(fileTable);
+        fileTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
-        // Custom renderers with dark theme support
+        // Szerokości kolumn
+        int[] widths = {40, 250, 350, 90, 140, 80, 100};
+        int[] maxWidths = {50, -1, -1, -1, -1, -1, -1};
+
+        for (int i = 0; i < widths.length; i++) {
+            fileTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+            if (maxWidths[i] > 0) {
+                fileTable.getColumnModel().getColumn(i).setMaxWidth(maxWidths[i]);
+            }
+        }
+
+        // Renderery
         fileTable.getColumnModel().getColumn(0).setCellRenderer(new CheckBoxRenderer());
         fileTable.getColumnModel().getColumn(0).setCellEditor(new CheckBoxEditor());
         fileTable.getColumnModel().getColumn(6).setCellRenderer(new StatusRenderer());
 
-        // Modern table header styling
-        fileTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
-        fileTable.getTableHeader().setBackground(new Color(50, 54, 62));
-        fileTable.getTableHeader().setForeground(new Color(200, 200, 200));
-        fileTable.getTableHeader().setReorderingAllowed(false);
-
-        // Selection mode
-        fileTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        fileTable.setSelectionBackground(new Color(70, 130, 180));
-        fileTable.setSelectionForeground(Color.WHITE);
-
-        // Double-click to toggle selection
+        // Podwójne kliknięcie przełącza zaznaczenie
         fileTable.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -135,7 +104,36 @@ public class FileListPanel extends JPanel {
                 }
             }
         });
+
+        // Podgląd obrazu przy najechaniu myszką
+        fileTable.addMouseMotionListener(new MouseMotionAdapter() {
+            private int lastRow = -1;
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int row = fileTable.rowAtPoint(e.getPoint());
+                if (row != lastRow) {
+                    lastRow = row;
+                    if (row >= 0 && row < tableModel.getRowCount()) {
+                        BackupFile file = tableModel.getFileAt(row);
+                        ImagePreviewTooltip.showPreview(file, fileTable, e.getPoint());
+                    } else {
+                        ImagePreviewTooltip.hidePreview();
+                    }
+                }
+            }
+        });
+
+        // Ukryj podgląd gdy mysz opuści tabelę
+        fileTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent e) {
+                ImagePreviewTooltip.hidePreview();
+            }
+        });
     }
+
+    // ====== PUBLICZNE API ======
 
     public void setFiles(List<BackupFile> files) {
         tableModel.setFiles(files);
@@ -164,71 +162,110 @@ public class FileListPanel extends JPanel {
         tableModel.updateFileStatus(file);
     }
 
+    public void setSelectionChangeListener(Runnable listener) {
+        this.selectionChangeListener = listener;
+    }
+
+    private void notifySelectionChanged() {
+        if (selectionChangeListener != null) {
+            selectionChangeListener.run();
+        }
+    }
+
+    // ====== METODY PRYWATNE ======
+
     private void applyFilter() {
         String filter = (String) filterComboBox.getSelectedItem();
         tableModel.applyFilter(filter != null ? filter : "All");
         updateSummary();
     }
 
-    private void updateSummary() {
+    public void updateSummary() {
         int selectedFiles = tableModel.getSelectedFiles().size();
         int visibleFiles = tableModel.getRowCount();
 
-        long totalSize = tableModel.getAllFiles().stream()
-                .mapToLong(BackupFile::getSize)
-                .sum();
-
-        long selectedSize = tableModel.getSelectedFiles().stream()
-                .mapToLong(BackupFile::getSize)
-                .sum();
+        long totalSize = tableModel.getAllFiles().stream().mapToLong(BackupFile::getSize).sum();
+        long selectedSize = tableModel.getSelectedFiles().stream().mapToLong(BackupFile::getSize).sum();
 
         String sizeText = formatSize(selectedSize) + " of " + formatSize(totalSize);
+        summaryLabel.setText(String.format("Showing %d files | Selected: %d (%s)", visibleFiles, selectedFiles, sizeText));
 
-        summaryLabel.setText(String.format("Showing %d files | Selected: %d (%s)",
-                visibleFiles, selectedFiles, sizeText));
+        notifySelectionChanged();
     }
 
     private String formatSize(long size) {
         return org.example.util.FileUtilities.formatFileSize(size);
     }
 
-    // Custom table model
-    private class FileTableModel extends AbstractTableModel {
-        private final String[] columnNames = {"", "Name", "Path", "Size", "Date Modified", "Type", "Status"};
-        private List<BackupFile> allFiles = new ArrayList<>();
+    // ====== RENDERERY ======
+
+    private static class CheckBoxRenderer extends JCheckBox implements TableCellRenderer {
+        public CheckBoxRenderer() {
+            setHorizontalAlignment(JLabel.CENTER);
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            setSelected(value != null && (Boolean) value);
+            setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
+            setForeground(isSelected ? table.getSelectionForeground() : table.getForeground());
+            return this;
+        }
+    }
+
+    private static class StatusRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setFont(FONT_REGULAR);
+
+            if (value != null) {
+                Color statusColor = switch (BackupFile.BackupStatus.valueOf(value.toString())) {
+                    case COMPLETED -> STATUS_SUCCESS;
+                    case ERROR -> STATUS_ERROR;
+                    case IN_PROGRESS -> STATUS_PROGRESS;
+                    case DUPLICATE -> STATUS_WARNING;
+                    default -> TEXT_PRIMARY;
+                };
+                setForeground(isSelected ? Color.WHITE : statusColor);
+            }
+            return this;
+        }
+    }
+
+    // ====== MODEL TABELI ======
+
+    private static class FileTableModel extends AbstractTableModel {
+        private static final String[] COLUMN_NAMES = {"", "Name", "Path", "Size", "Date Modified", "Type", "Status"};
         private final List<BackupFile> filteredFiles = new ArrayList<>();
+        private List<BackupFile> allFiles = new ArrayList<>();
 
         @Override
-        public int getRowCount() {
-            return filteredFiles.size();
-        }
+        public int getRowCount() { return filteredFiles.size(); }
 
         @Override
-        public int getColumnCount() {
-            return columnNames.length;
-        }
+        public int getColumnCount() { return COLUMN_NAMES.length; }
 
         @Override
-        public String getColumnName(int column) {
-            return columnNames[column];
-        }
+        public String getColumnName(int column) { return COLUMN_NAMES[column]; }
 
         @Override
         public Class<?> getColumnClass(int columnIndex) {
-            if (columnIndex == 0) return Boolean.class;
-            return String.class;
+            return columnIndex == 0 ? Boolean.class : String.class;
         }
 
         @Override
         public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return columnIndex == 0; // Only checkbox column is editable
+            return columnIndex == 0;
         }
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
             if (rowIndex >= filteredFiles.size()) return null;
-
             BackupFile file = filteredFiles.get(rowIndex);
+
             return switch (columnIndex) {
                 case 0 -> file.isSelected();
                 case 1 -> file.getFileName();
@@ -244,8 +281,7 @@ public class FileListPanel extends JPanel {
         @Override
         public void setValueAt(Object value, int rowIndex, int columnIndex) {
             if (columnIndex == 0 && rowIndex < filteredFiles.size()) {
-                BackupFile file = filteredFiles.get(rowIndex);
-                file.setSelected((Boolean) value);
+                filteredFiles.get(rowIndex).setSelected((Boolean) value);
                 fireTableCellUpdated(rowIndex, columnIndex);
             }
         }
@@ -261,24 +297,18 @@ public class FileListPanel extends JPanel {
             fireTableDataChanged();
         }
 
-        public List<BackupFile> getAllFiles() {
-            return new ArrayList<>(allFiles);
+        public List<BackupFile> getAllFiles() { return new ArrayList<>(allFiles); }
+
+        public BackupFile getFileAt(int row) {
+            return row >= 0 && row < filteredFiles.size() ? filteredFiles.get(row) : null;
         }
 
         public List<BackupFile> getSelectedFiles() {
-            List<BackupFile> selected = new ArrayList<>();
-            for (BackupFile file : allFiles) {
-                if (file.isSelected()) {
-                    selected.add(file);
-                }
-            }
-            return selected;
+            return allFiles.stream().filter(BackupFile::isSelected).toList();
         }
 
         public void setAllSelected(boolean selected) {
-            for (BackupFile file : allFiles) {
-                file.setSelected(selected);
-            }
+            allFiles.forEach(f -> f.setSelected(selected));
             fireTableDataChanged();
         }
 
@@ -292,41 +322,14 @@ public class FileListPanel extends JPanel {
 
         public void applyFilter(String filter) {
             filteredFiles.clear();
-
-            switch (filter) {
-                case "All":
-                    filteredFiles.addAll(allFiles);
-                    break;
-                case "Images":
-                    for (BackupFile file : allFiles) {
-                        if (file.isImage()) {
-                            filteredFiles.add(file);
-                        }
-                    }
-                    break;
-                case "Videos":
-                    for (BackupFile file : allFiles) {
-                        if (file.isVideo()) {
-                            filteredFiles.add(file);
-                        }
-                    }
-                    break;
-                case "Selected":
-                    for (BackupFile file : allFiles) {
-                        if (file.isSelected()) {
-                            filteredFiles.add(file);
-                        }
-                    }
-                    break;
-                case "Duplicates":
-                    for (BackupFile file : allFiles) {
-                        if (file.getStatus() == BackupFile.BackupStatus.DUPLICATE) {
-                            filteredFiles.add(file);
-                        }
-                    }
-                    break;
-            }
-
+            filteredFiles.addAll(switch (filter) {
+                case "Images" -> allFiles.stream().filter(BackupFile::isImage).toList();
+                case "Videos" -> allFiles.stream().filter(BackupFile::isVideo).toList();
+                case "Selected" -> allFiles.stream().filter(BackupFile::isSelected).toList();
+                case "Duplicates" -> allFiles.stream()
+                    .filter(f -> f.getStatus() == BackupFile.BackupStatus.DUPLICATE).toList();
+                default -> allFiles;
+            });
             fireTableDataChanged();
         }
 
@@ -338,31 +341,8 @@ public class FileListPanel extends JPanel {
         }
     }
 
-    // Custom checkbox renderer
-    private static class CheckBoxRenderer extends JCheckBox implements TableCellRenderer {
-        public CheckBoxRenderer() {
-            setHorizontalAlignment(JLabel.CENTER);
-        }
+    // ====== EDYTOR CHECKBOX ======
 
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                boolean isSelected, boolean hasFocus, int row, int column) {
-
-            setSelected(value != null && (Boolean) value);
-
-            if (isSelected) {
-                setBackground(table.getSelectionBackground());
-                setForeground(table.getSelectionForeground());
-            } else {
-                setBackground(table.getBackground());
-                setForeground(table.getForeground());
-            }
-
-            return this;
-        }
-    }
-
-    // Custom checkbox editor
     private class CheckBoxEditor extends DefaultCellEditor {
         private final JCheckBox checkBox;
 
@@ -370,52 +350,13 @@ public class FileListPanel extends JPanel {
             super(new JCheckBox());
             this.checkBox = (JCheckBox) getComponent();
             this.checkBox.setHorizontalAlignment(JLabel.CENTER);
-
-            // Create ActionListener once and reuse it
             this.checkBox.addActionListener(_ -> SwingUtilities.invokeLater(FileListPanel.this::updateSummary));
         }
 
         @Override
-        public Component getTableCellEditorComponent(JTable table, Object value,
-                boolean isSelected, int row, int column) {
-
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
             checkBox.setSelected(value != null && (Boolean) value);
-
             return checkBox;
-        }
-    }
-
-    // Custom status renderer with dark theme colors
-    private static class StatusRenderer extends DefaultTableCellRenderer {
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                boolean isSelected, boolean hasFocus, int row, int column) {
-
-            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-            setFont(new Font("Segoe UI", Font.PLAIN, 12));
-
-            if (value != null) {
-                BackupFile.BackupStatus status = BackupFile.BackupStatus.valueOf(value.toString());
-                switch (status) {
-                    case COMPLETED:
-                        setForeground(isSelected ? Color.WHITE : new Color(46, 204, 113));
-                        break;
-                    case ERROR:
-                        setForeground(isSelected ? Color.WHITE : new Color(231, 76, 60));
-                        break;
-                    case IN_PROGRESS:
-                        setForeground(isSelected ? Color.WHITE : new Color(52, 152, 219));
-                        break;
-                    case DUPLICATE:
-                        setForeground(isSelected ? Color.WHITE : new Color(230, 126, 34));
-                        break;
-                    default:
-                        setForeground(isSelected ? Color.WHITE : new Color(200, 200, 200));
-                        break;
-                }
-            }
-
-            return this;
         }
     }
 }

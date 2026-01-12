@@ -10,59 +10,59 @@ import org.example.service.DuplicateAnalysisResult;
 import org.example.service.ConfigurationPersistenceService;
 import org.example.service.SyncService;
 import org.example.service.SyncResult;
+import org.example.service.FileDeleteService;
 import org.example.util.MultiThreadedHashCalculator;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.io.File;
 import java.util.List;
 import java.util.Map;
 
+import static org.example.gui.UIConstants.*;
+
 /**
- * Main window of the Multimedia File Backup Manager application.
+ * Główne okno aplikacji do zarządzania kopiami zapasowymi plików multimedialnych.
  */
 public class MainWindow extends JFrame implements FileScanner.ScanProgressCallback,
                                                  BackupService.BackupProgressCallback,
                                                  DuplicateDetectionService.DuplicateDetectionCallback,
-                                                 SyncService.SyncProgressCallback {
+                                                 SyncService.SyncProgressCallback,
+                                                 FileDeleteService.DeleteProgressCallback {
 
     private final BackupConfiguration configuration;
     private HashStorageService hashStorageService;
     private final ConfigurationPersistenceService configPersistenceService;
 
-    // UI Components
+    // Komponenty UI - Konfiguracja
     private JLabel masterLocationLabel;
     private JButton browseMasterButton;
     private JList<File> sourceDirectoriesList;
     private DefaultListModel<File> sourceListModel;
-    private JButton addSourceButton;
-    private JButton removeSourceButton;
+    private JButton addSourceButton, removeSourceButton;
     private JList<File> syncLocationsList;
     private DefaultListModel<File> syncListModel;
-    private JButton addSyncButton;
-    private JButton removeSyncButton;
-    private JButton syncButton;
-    private JButton scanButton;
-    private JButton backupButton;
-    private JButton viewDuplicatesButton;
-    private JButton rescanMasterButton;
+    private JButton addSyncButton, removeSyncButton;
 
+    // Komponenty UI - Akcje
+    private JButton scanButton, backupButton, viewDuplicatesButton, rescanMasterButton, syncButton, deleteSelectedButton;
+
+    // Komponenty UI - Panel plików i postęp
     private FileListPanel fileListPanel;
-    private JProgressBar scanProgressBar;
-    private JProgressBar backupProgressBar;
-    private JProgressBar syncProgressBar;
+    private JProgressBar scanProgressBar, backupProgressBar, syncProgressBar;
     private JLabel statusLabel;
 
-    private JCheckBox includeSubdirectoriesCheckBox;
-    private JCheckBox createDateFoldersCheckBox;
-    private JCheckBox enableDuplicateDetectionCheckBox;
+    // Komponenty UI - Opcje
+    private JCheckBox includeSubdirectoriesCheckBox, createDateFoldersCheckBox;
+    private JCheckBox enableDuplicateDetectionCheckBox, skipHashingCheckBox;
     private JSpinner threadCountSpinner;
 
+    // Serwisy i stan
     private FileScanner currentScanner;
     private BackupService currentBackupService;
     private DuplicateDetectionService currentDuplicateService;
     private SyncService currentSyncService;
+    private FileDeleteService currentDeleteService;
     private DuplicateAnalysisResult lastDuplicateResult;
     private String lastTimingInfo;
 
@@ -80,24 +80,22 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
 
-        // Modern window decoration
-        getRootPane().putClientProperty("JRootPane.titleBarBackground", new Color(40, 44, 52));
+        // Dekoracja okna
+        getRootPane().putClientProperty("JRootPane.titleBarBackground", BG_PRIMARY);
         getRootPane().putClientProperty("JRootPane.titleBarForeground", Color.WHITE);
 
-        // Create main panels with spacing
+        // Główny kontener
         JPanel mainContainer = new JPanel(new BorderLayout(10, 10));
         mainContainer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
         mainContainer.add(createConfigurationPanel(), BorderLayout.NORTH);
         mainContainer.add(createCenterPanel(), BorderLayout.CENTER);
 
         add(mainContainer, BorderLayout.CENTER);
         add(createStatusPanel(), BorderLayout.SOUTH);
 
-        // Set initial state
         updateButtonStates();
 
-        // Window settings - responsive sizing
+        // Ustawienia okna
         setMinimumSize(new Dimension(1000, 750));
         setPreferredSize(new Dimension(1200, 1000));
         pack();
@@ -106,55 +104,53 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
     private JPanel createConfigurationPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(80, 80, 80), 1),
-                "Configuration",
-                TitledBorder.LEFT,
-                TitledBorder.TOP,
-                new Font("Segoe UI", Font.BOLD, 13),
-                new Color(200, 200, 200)
-            ),
-            BorderFactory.createEmptyBorder(10, 10, 10, 10)
-        ));
+        panel.setBorder(createTitledBorder("Configuration"));
         GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = CELL_INSETS;
 
-        // Master backup location
+        // Lokalizacja głównej kopii zapasowej
+        addMasterLocationRow(panel, gbc);
+
+        // Katalogi źródłowe
+        addSourceDirectoriesRow(panel, gbc);
+
+        // Lokalizacje synchronizacji
+        addSyncLocationsRow(panel, gbc);
+
+        // Opcje
+        addOptionsRow(panel, gbc);
+
+        // Przyciski akcji
+        addActionButtonsRow(panel, gbc);
+
+        return panel;
+    }
+
+    private void addMasterLocationRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0; gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.WEST;
-        gbc.insets = new Insets(8, 8, 8, 8);
-        JLabel masterLabel = new JLabel("Master Backup Location:");
-        masterLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        panel.add(masterLabel, gbc);
+        panel.add(createLabel("Master Backup Location:"), gbc);
 
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
-        masterLocationLabel = new JLabel("No location selected");
-        masterLocationLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        masterLocationLabel = createLabel("No location selected", FONT_REGULAR, TEXT_SECONDARY);
         masterLocationLabel.setOpaque(true);
-        masterLocationLabel.setBackground(new Color(50, 54, 62));
-        masterLocationLabel.setForeground(new Color(180, 180, 180));
-        masterLocationLabel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(70, 74, 82), 1),
-            BorderFactory.createEmptyBorder(8, 12, 8, 12)
-        ));
+        masterLocationLabel.setBackground(BG_INPUT);
+        masterLocationLabel.setBorder(createInputBorder());
         panel.add(masterLocationLabel, gbc);
 
         gbc.gridx = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
-        browseMasterButton = new JButton("Browse...");
-        browseMasterButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        browseMasterButton.setFocusPainted(false);
+        browseMasterButton = createButton("Browse...", BUTTON_SMALL);
         panel.add(browseMasterButton, gbc);
+    }
 
-        // Source directories
+    private void addSourceDirectoriesRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0; gbc.gridy = 1;
         gbc.anchor = GridBagConstraints.NORTHWEST;
-        JLabel sourceLabel = new JLabel("Source Directories:");
-        sourceLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        panel.add(sourceLabel, gbc);
+        panel.add(createLabel("Source Directories:"), gbc);
 
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.BOTH;
@@ -162,38 +158,27 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.weighty = 1.0;
         sourceListModel = new DefaultListModel<>();
         sourceDirectoriesList = new JList<>(sourceListModel);
-        sourceDirectoriesList.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        sourceDirectoriesList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        sourceDirectoriesList.setBackground(new Color(50, 54, 62));
-        sourceDirectoriesList.setForeground(new Color(200, 200, 200));
-        JScrollPane sourceScrollPane = new JScrollPane(sourceDirectoriesList);
-        sourceScrollPane.setPreferredSize(new Dimension(400, 60));
-        sourceScrollPane.setBorder(BorderFactory.createLineBorder(new Color(70, 74, 82), 1));
-        panel.add(sourceScrollPane, gbc);
+        styleList(sourceDirectoriesList);
+        panel.add(createScrollPane(sourceDirectoriesList), gbc);
 
-        // Source directory buttons
         gbc.gridx = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         gbc.weighty = 0;
-        JPanel sourceButtonPanel = new JPanel(new GridLayout(2, 1, 8, 8));
-        sourceButtonPanel.setOpaque(false);
-        addSourceButton = new JButton("Add...");
-        addSourceButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        addSourceButton.setFocusPainted(false);
-        removeSourceButton = new JButton("Remove");
-        removeSourceButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        removeSourceButton.setFocusPainted(false);
-        sourceButtonPanel.add(addSourceButton);
-        sourceButtonPanel.add(removeSourceButton);
-        panel.add(sourceButtonPanel, gbc);
+        JPanel buttonPanel = new JPanel(new GridLayout(2, 1, 8, 8));
+        buttonPanel.setOpaque(false);
+        addSourceButton = createButton("Add...", BUTTON_SMALL);
+        removeSourceButton = createButton("Remove", BUTTON_SMALL);
+        buttonPanel.add(addSourceButton);
+        buttonPanel.add(removeSourceButton);
+        panel.add(buttonPanel, gbc);
+    }
 
-        // Sync locations
+    private void addSyncLocationsRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0; gbc.gridy = 2;
         gbc.anchor = GridBagConstraints.NORTHWEST;
         gbc.weighty = 1.0;
-        JLabel syncLabel = new JLabel("Sync Locations:");
-        syncLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        JLabel syncLabel = createLabel("Sync Locations:");
         syncLabel.setToolTipText("Create copies of master folder in these locations");
         panel.add(syncLabel, gbc);
 
@@ -202,180 +187,132 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.weightx = 1.0;
         syncListModel = new DefaultListModel<>();
         syncLocationsList = new JList<>(syncListModel);
-        syncLocationsList.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        syncLocationsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        syncLocationsList.setBackground(new Color(50, 54, 62));
-        syncLocationsList.setForeground(new Color(200, 200, 200));
-        JScrollPane syncScrollPane = new JScrollPane(syncLocationsList);
-        syncScrollPane.setPreferredSize(new Dimension(400, 60));
-        syncScrollPane.setBorder(BorderFactory.createLineBorder(new Color(70, 74, 82), 1));
-        panel.add(syncScrollPane, gbc);
+        styleList(syncLocationsList);
+        panel.add(createScrollPane(syncLocationsList), gbc);
 
-        // Sync location buttons
         gbc.gridx = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         gbc.weighty = 0;
-        JPanel syncButtonPanel = new JPanel(new GridLayout(2, 1, 8, 8));
-        syncButtonPanel.setOpaque(false);
-        addSyncButton = new JButton("Add...");
-        addSyncButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        addSyncButton.setFocusPainted(false);
-        removeSyncButton = new JButton("Remove");
-        removeSyncButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        removeSyncButton.setFocusPainted(false);
-        syncButtonPanel.add(addSyncButton);
-        syncButtonPanel.add(removeSyncButton);
-        panel.add(syncButtonPanel, gbc);
+        JPanel buttonPanel = new JPanel(new GridLayout(2, 1, 8, 8));
+        buttonPanel.setOpaque(false);
+        addSyncButton = createButton("Add...", BUTTON_SMALL);
+        removeSyncButton = createButton("Remove", BUTTON_SMALL);
+        buttonPanel.add(addSyncButton);
+        buttonPanel.add(removeSyncButton);
+        panel.add(buttonPanel, gbc);
+    }
 
-        // Options
+    private void addOptionsRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0; gbc.gridy = 3;
         gbc.gridwidth = 3;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weighty = 0;
+
         JPanel optionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 5));
         optionsPanel.setOpaque(false);
 
-        includeSubdirectoriesCheckBox = new JCheckBox("Include subdirectories", true);
-        includeSubdirectoriesCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        includeSubdirectoriesCheckBox.setFocusPainted(false);
-
-        createDateFoldersCheckBox = new JCheckBox("Create date-based folders", false);
-        createDateFoldersCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        createDateFoldersCheckBox.setFocusPainted(false);
-
-        enableDuplicateDetectionCheckBox = new JCheckBox("Detect duplicates with master folder", true);
-        enableDuplicateDetectionCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        enableDuplicateDetectionCheckBox.setFocusPainted(false);
+        includeSubdirectoriesCheckBox = createCheckBox("Include subdirectories", true);
+        createDateFoldersCheckBox = createCheckBox("Create date-based folders", false);
+        enableDuplicateDetectionCheckBox = createCheckBox("Detect duplicates with master folder", true);
+        skipHashingCheckBox = createCheckBox("Skip hashing (fast scan)", false);
+        skipHashingCheckBox.setToolTipText("<html>Skip hash calculation for faster scanning<br>Duplicates are detected by comparing file name and size</html>");
 
         optionsPanel.add(includeSubdirectoriesCheckBox);
         optionsPanel.add(createDateFoldersCheckBox);
         optionsPanel.add(enableDuplicateDetectionCheckBox);
+        optionsPanel.add(skipHashingCheckBox);
 
-        JLabel threadLabel = new JLabel("Hash threads:");
-        threadLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        optionsPanel.add(threadLabel);
+        optionsPanel.add(createLabel("Hash threads:"));
         threadCountSpinner = new JSpinner(new SpinnerNumberModel(
-            Runtime.getRuntime().availableProcessors(),
-            1,
-            Runtime.getRuntime().availableProcessors() * 2,
-            1
-        ));
-        threadCountSpinner.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        threadCountSpinner.setPreferredSize(new Dimension(70, 28));
+            Runtime.getRuntime().availableProcessors(), 1,
+            Runtime.getRuntime().availableProcessors() * 2, 1));
+        threadCountSpinner.setFont(FONT_REGULAR);
+        threadCountSpinner.setPreferredSize(SPINNER_SIZE);
         optionsPanel.add(threadCountSpinner);
-        panel.add(optionsPanel, gbc);
 
-        // Action buttons with modern styling
+        panel.add(optionsPanel, gbc);
+    }
+
+    private void addActionButtonsRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridy = 4;
         gbc.insets = new Insets(6, 8, 4, 8);
+
         JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
         actionPanel.setOpaque(false);
 
-        scanButton = createStyledButton("Scan for Files");
-        backupButton = createStyledButton("Start Backup");
-        viewDuplicatesButton = createStyledButton("View Duplicates");
+        scanButton = createButton("Scan for Files");
+        backupButton = createButton("Start Backup");
+        viewDuplicatesButton = createButton("View Duplicates");
         viewDuplicatesButton.setEnabled(false);
-        rescanMasterButton = createStyledButton("Rescan Master");
+        rescanMasterButton = createButton("Rescan Master");
         rescanMasterButton.setEnabled(false);
-        syncButton = createStyledButton("Sync Locations");
+        syncButton = createButton("Sync Locations");
         syncButton.setEnabled(false);
+        deleteSelectedButton = createButton("Delete Selected");
+        deleteSelectedButton.setEnabled(false);
 
         actionPanel.add(scanButton);
         actionPanel.add(backupButton);
         actionPanel.add(viewDuplicatesButton);
         actionPanel.add(rescanMasterButton);
         actionPanel.add(syncButton);
+        actionPanel.add(deleteSelectedButton);
+
         panel.add(actionPanel, gbc);
-
-        return panel;
-    }
-
-    private JButton createStyledButton(String text) {
-        JButton button = new JButton(text);
-        button.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        button.setFocusPainted(false);
-        button.setPreferredSize(new Dimension(150, 36));
-        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        button.putClientProperty("JButton.buttonType", "roundRect");
-        return button;
     }
 
     private JPanel createCenterPanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
 
-        // File list panel
         fileListPanel = new FileListPanel();
+        fileListPanel.setSelectionChangeListener(this::updateButtonStates);
         panel.add(fileListPanel, BorderLayout.CENTER);
 
-        // Progress bars with modern styling
+        // Paski postępu
         JPanel progressPanel = new JPanel(new GridLayout(3, 1, 0, 10));
-        progressPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(80, 80, 80), 1),
-                "Progress",
-                TitledBorder.LEFT,
-                TitledBorder.TOP,
-                new Font("Segoe UI", Font.BOLD, 13),
-                new Color(200, 200, 200)
-            ),
-            BorderFactory.createEmptyBorder(10, 10, 10, 10)
-        ));
+        progressPanel.setBorder(createTitledBorder("Progress"));
 
-        scanProgressBar = new JProgressBar(0, 100);
-        scanProgressBar.setStringPainted(true);
-        scanProgressBar.setString("Ready to scan");
-        scanProgressBar.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        scanProgressBar.setPreferredSize(new Dimension(0, 28));
+        scanProgressBar = createProgressBar("Ready to scan");
+        backupProgressBar = createProgressBar("Ready to backup");
+        syncProgressBar = createProgressBar("Ready to sync");
+
         progressPanel.add(scanProgressBar);
-
-        backupProgressBar = new JProgressBar(0, 100);
-        backupProgressBar.setStringPainted(true);
-        backupProgressBar.setString("Ready to backup");
-        backupProgressBar.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        backupProgressBar.setPreferredSize(new Dimension(0, 28));
         progressPanel.add(backupProgressBar);
-
-        syncProgressBar = new JProgressBar(0, 100);
-        syncProgressBar.setStringPainted(true);
-        syncProgressBar.setString("Ready to sync");
-        syncProgressBar.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        syncProgressBar.setPreferredSize(new Dimension(0, 28));
         progressPanel.add(syncProgressBar);
 
         panel.add(progressPanel, BorderLayout.SOUTH);
-
         return panel;
     }
 
     private JPanel createStatusPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(40, 44, 52));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(70, 74, 82)),
-            BorderFactory.createEmptyBorder(8, 15, 8, 15)
-        ));
+        panel.setBackground(BG_PRIMARY);
+        panel.setBorder(createStatusBorder());
 
-        statusLabel = new JLabel("Ready");
-        statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        statusLabel.setForeground(new Color(180, 180, 180));
+        statusLabel = createLabel("Ready", FONT_REGULAR, TEXT_SECONDARY);
         panel.add(statusLabel, BorderLayout.WEST);
 
         return panel;
     }
 
     private void setupEventHandlers() {
+        // Nawigacja
         browseMasterButton.addActionListener(_ -> browseMasterLocation());
         addSourceButton.addActionListener(_ -> addSourceDirectory());
         removeSourceButton.addActionListener(_ -> removeSourceDirectory());
         addSyncButton.addActionListener(_ -> addSyncLocation());
         removeSyncButton.addActionListener(_ -> removeSyncLocation());
+
+        // Akcje
         scanButton.addActionListener(_ -> startScan());
         backupButton.addActionListener(_ -> startBackup());
         viewDuplicatesButton.addActionListener(_ -> viewDuplicates());
         rescanMasterButton.addActionListener(_ -> rescanMasterFolder());
         syncButton.addActionListener(_ -> startSync());
+        deleteSelectedButton.addActionListener(_ -> deleteSelectedFiles());
 
+        // Opcje
         includeSubdirectoriesCheckBox.addActionListener(_ -> {
             configuration.setIncludeSubdirectories(includeSubdirectoriesCheckBox.isSelected());
             saveConfiguration();
@@ -386,27 +323,29 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             saveConfiguration();
         });
 
+        skipHashingCheckBox.addActionListener(_ -> {
+            configuration.setSkipHashing(skipHashingCheckBox.isSelected());
+            updateHashingControlsState();
+            saveConfiguration();
+        });
+
         threadCountSpinner.addChangeListener(_ -> {
             configuration.setHashingThreadCount((Integer) threadCountSpinner.getValue());
             saveConfiguration();
         });
 
+        // Selekcja list
         sourceDirectoriesList.addListSelectionListener(_ -> updateButtonStates());
         syncLocationsList.addListSelectionListener(_ -> updateButtonStates());
     }
 
+    // ====== OPERACJE NAWIGACJI ======
+
     private void browseMasterLocation() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        chooser.setDialogTitle("Select Master Backup Location");
+        File selectedDir = showDirectoryChooser("Select Master Backup Location",
+            configuration.getMasterBackupLocation());
 
-        if (configuration.getMasterBackupLocation() != null) {
-            chooser.setCurrentDirectory(configuration.getMasterBackupLocation());
-        }
-
-        int result = chooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            File selectedDir = chooser.getSelectedFile();
+        if (selectedDir != null) {
             configuration.setMasterBackupLocation(selectedDir);
             masterLocationLabel.setText(selectedDir.getAbsolutePath());
             initializeHashStorage();
@@ -416,13 +355,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private void addSourceDirectory() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        chooser.setDialogTitle("Select Source Directory");
-
-        int result = chooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            File selectedDir = chooser.getSelectedFile();
+        File selectedDir = showDirectoryChooser("Select Source Directory", null);
+        if (selectedDir != null) {
             configuration.addSourceDirectory(selectedDir);
             sourceListModel.addElement(selectedDir);
             updateButtonStates();
@@ -441,22 +375,14 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private void addSyncLocation() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        chooser.setDialogTitle("Select Sync Location");
-
-        int result = chooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            File selectedDir = chooser.getSelectedFile();
-
-            // Check if it's the same as master location
+        File selectedDir = showDirectoryChooser("Select Sync Location", null);
+        if (selectedDir != null) {
             if (selectedDir.equals(configuration.getMasterBackupLocation())) {
                 JOptionPane.showMessageDialog(this,
                     "Sync location cannot be the same as master backup location.",
                     "Invalid Location", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-
             configuration.addSyncLocation(selectedDir);
             syncListModel.addElement(selectedDir);
             updateButtonStates();
@@ -474,41 +400,33 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         }
     }
 
+    private File showDirectoryChooser(String title, File currentDir) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        chooser.setDialogTitle(title);
+        if (currentDir != null) {
+            chooser.setCurrentDirectory(currentDir);
+        }
+        return chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION
+            ? chooser.getSelectedFile() : null;
+    }
+
+    // ====== OPERACJE SKANOWANIA I KOPII ZAPASOWEJ ======
+
     private void startScan() {
-        // Check if we should cancel an existing scan
-        boolean scanInProgress = (currentScanner != null && !currentScanner.isDone()) ||
-                                (currentDuplicateService != null && !currentDuplicateService.isDone());
-
-        if (scanInProgress) {
-            // Cancel the current scan
-            if (currentScanner != null && !currentScanner.isDone()) {
-                currentScanner.cancel(true);
-                currentScanner = null;
-            }
-            if (currentDuplicateService != null && !currentDuplicateService.isDone()) {
-                currentDuplicateService.cancel(true);
-                currentDuplicateService = null;
-            }
-
-            // Reset UI
-            scanProgressBar.setValue(0);
-            scanProgressBar.setString("Scan cancelled");
-            statusLabel.setText("Scan cancelled by user");
-            updateButtonStates();
+        if (isScanInProgress()) {
+            cancelCurrentScan();
             return;
         }
 
-        // Start new scan
         fileListPanel.clearFiles();
         scanProgressBar.setValue(0);
         scanProgressBar.setString("Starting scan...");
 
         if (enableDuplicateDetectionCheckBox.isSelected() && hashStorageService != null) {
-            // Use duplicate detection service
             currentDuplicateService = new DuplicateDetectionService(configuration, hashStorageService, this);
             currentDuplicateService.execute();
         } else {
-            // Use regular scanner
             currentScanner = new FileScanner(configuration, this);
             currentScanner.execute();
         }
@@ -519,41 +437,20 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private void startBackup() {
-        // Check if we should cancel an existing backup
-        boolean backupInProgress = currentBackupService != null && !currentBackupService.isDone();
-
-        if (backupInProgress) {
-            // Cancel the current backup
-            int result = JOptionPane.showConfirmDialog(this,
-                    "Are you sure you want to cancel the backup?",
-                    "Cancel Backup", JOptionPane.YES_NO_OPTION);
-
-            if (result == JOptionPane.YES_OPTION) {
-                currentBackupService.cancel(true);
-                currentBackupService = null;
-
-                // Reset UI
-                backupProgressBar.setValue(0);
-                backupProgressBar.setString("Backup cancelled");
-                statusLabel.setText("Backup cancelled by user");
-                updateButtonStates();
+        if (isBackupInProgress()) {
+            if (confirmAction("Are you sure you want to cancel the backup?", "Cancel Backup")) {
+                cancelBackup();
             }
             return;
         }
 
-        // Start new backup
         List<BackupFile> selectedFiles = fileListPanel.getSelectedFiles();
         if (selectedFiles.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No files selected for backup.",
-                    "No Files Selected", JOptionPane.WARNING_MESSAGE);
+            showWarning("No files selected for backup.", "No Files Selected");
             return;
         }
 
-        int result = JOptionPane.showConfirmDialog(this,
-                "Start backup of " + selectedFiles.size() + " files?",
-                "Confirm Backup", JOptionPane.YES_NO_OPTION);
-
-        if (result == JOptionPane.YES_OPTION) {
+        if (confirmAction("Start backup of " + selectedFiles.size() + " files?", "Confirm Backup")) {
             backupProgressBar.setValue(0);
             backupProgressBar.setString("Starting backup...");
 
@@ -566,43 +463,19 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private void startSync() {
-        // Check if we should cancel an existing sync
-        boolean syncInProgress = currentSyncService != null && !currentSyncService.isDone();
-
-        if (syncInProgress) {
-            // Cancel the current sync
-            int result = JOptionPane.showConfirmDialog(this,
-                    "Are you sure you want to cancel the sync?",
-                    "Cancel Sync", JOptionPane.YES_NO_OPTION);
-
-            if (result == JOptionPane.YES_OPTION) {
-                currentSyncService.cancel(true);
-                currentSyncService = null;
-
-                // Reset UI
-                syncProgressBar.setValue(0);
-                syncProgressBar.setString("Sync cancelled");
-                statusLabel.setText("Sync cancelled by user");
-                updateButtonStates();
+        if (isSyncInProgress()) {
+            if (confirmAction("Are you sure you want to cancel the sync?", "Cancel Sync")) {
+                cancelSync();
             }
             return;
         }
 
-        // Confirm sync operation
         List<File> syncLocations = configuration.getSyncLocations();
-        StringBuilder message = new StringBuilder();
-        message.append("Sync master folder to the following locations?\n\n");
-        for (File location : syncLocations) {
-            message.append("• ").append(location.getAbsolutePath()).append("\n");
-        }
+        StringBuilder message = new StringBuilder("Sync master folder to the following locations?\n\n");
+        syncLocations.forEach(loc -> message.append("• ").append(loc.getAbsolutePath()).append("\n"));
         message.append("\nThis will copy all files from the master folder and remove files that no longer exist.");
 
-        int result = JOptionPane.showConfirmDialog(this,
-                message.toString(),
-                "Confirm Sync",
-                JOptionPane.YES_NO_OPTION);
-
-        if (result == JOptionPane.YES_OPTION) {
+        if (confirmAction(message.toString(), "Confirm Sync")) {
             syncProgressBar.setValue(0);
             syncProgressBar.setString("Starting sync...");
             statusLabel.setText("Syncing master folder...");
@@ -615,65 +488,174 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         }
     }
 
+    private void deleteSelectedFiles() {
+        if (isDeleteInProgress()) {
+            if (confirmAction("Are you sure you want to cancel the delete operation?", "Cancel Delete")) {
+                cancelDelete();
+            }
+            return;
+        }
+
+        List<BackupFile> selectedFiles = fileListPanel.getSelectedFiles();
+        if (selectedFiles.isEmpty()) {
+            showWarning("No files selected for deletion.", "No Selection");
+            return;
+        }
+
+        long totalSize = selectedFiles.stream().mapToLong(BackupFile::getSize).sum();
+        String sizeText = org.example.util.FileUtilities.formatFileSize(totalSize);
+
+        String message = String.format("""
+            Are you sure you want to permanently delete %d selected files?
+            
+            Total size: %s
+            
+            WARNING: This action cannot be undone!""",
+            selectedFiles.size(), sizeText);
+
+        if (!confirmAction(message, "Confirm Delete")) {
+            return;
+        }
+
+        scanProgressBar.setValue(0);
+        scanProgressBar.setString("Deleting files...");
+        statusLabel.setText("Deleting " + selectedFiles.size() + " files...");
+
+        currentDeleteService = new FileDeleteService(selectedFiles, this);
+        currentDeleteService.execute();
+
+        deleteSelectedButton.setText("Cancel Delete");
+        updateButtonStates();
+    }
+
+    // ====== POMOCNICZE METODY STANU ======
+
+    private boolean isScanInProgress() {
+        return (currentScanner != null && !currentScanner.isDone()) ||
+               (currentDuplicateService != null && !currentDuplicateService.isDone());
+    }
+
+    private boolean isBackupInProgress() {
+        return currentBackupService != null && !currentBackupService.isDone();
+    }
+
+    private boolean isSyncInProgress() {
+        return currentSyncService != null && !currentSyncService.isDone();
+    }
+
+    private boolean isDeleteInProgress() {
+        return currentDeleteService != null && !currentDeleteService.isDone();
+    }
+
+    private void cancelCurrentScan() {
+        if (currentScanner != null && !currentScanner.isDone()) {
+            currentScanner.cancel(true);
+            currentScanner = null;
+        }
+        if (currentDuplicateService != null && !currentDuplicateService.isDone()) {
+            currentDuplicateService.cancel(true);
+            currentDuplicateService = null;
+        }
+        scanProgressBar.setValue(0);
+        scanProgressBar.setString("Scan cancelled");
+        statusLabel.setText("Scan cancelled by user");
+        updateButtonStates();
+    }
+
+    private void cancelBackup() {
+        currentBackupService.cancel(true);
+        currentBackupService = null;
+        backupProgressBar.setValue(0);
+        backupProgressBar.setString("Backup cancelled");
+        statusLabel.setText("Backup cancelled by user");
+        updateButtonStates();
+    }
+
+    private void cancelSync() {
+        currentSyncService.cancel(true);
+        currentSyncService = null;
+        syncProgressBar.setValue(0);
+        syncProgressBar.setString("Sync cancelled");
+        statusLabel.setText("Sync cancelled by user");
+        updateButtonStates();
+    }
+
+    private void cancelDelete() {
+        currentDeleteService.cancel(true);
+        currentDeleteService = null;
+        scanProgressBar.setValue(0);
+        scanProgressBar.setString("Delete cancelled");
+        statusLabel.setText("Delete cancelled by user");
+        deleteSelectedButton.setText("Delete Selected");
+        updateButtonStates();
+    }
+
+    // ====== METODY POMOCNICZE UI ======
+
+    private boolean confirmAction(String message, String title) {
+        return JOptionPane.showConfirmDialog(this, message, title, JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
+    }
+
+    private void showWarning(String message, String title) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.WARNING_MESSAGE);
+    }
+
     private void updateButtonStates() {
         removeSourceButton.setEnabled(sourceDirectoriesList.getSelectedValue() != null);
         removeSyncButton.setEnabled(syncLocationsList.getSelectedValue() != null);
 
         boolean canScan = configuration.getMasterBackupLocation() != null &&
                          !configuration.getSourceDirectories().isEmpty();
-        boolean scanInProgress = (currentScanner != null && !currentScanner.isDone()) ||
-                                (currentDuplicateService != null && !currentDuplicateService.isDone());
+        boolean scanInProgress = isScanInProgress();
 
         scanButton.setEnabled(canScan);
         scanButton.setText(scanInProgress ? "Cancel Scan" : "Scan for Files");
 
         boolean hasFiles = fileListPanel.getFileCount() > 0;
-        boolean backupInProgress = currentBackupService != null && !currentBackupService.isDone();
+        boolean backupInProgress = isBackupInProgress();
 
         backupButton.setEnabled(hasFiles && !scanInProgress && canScan);
         backupButton.setText(backupInProgress ? "Cancel Backup" : "Start Backup");
 
-        // View duplicates button is enabled when we have duplicate results
         if (!viewDuplicatesButton.isEnabled() && lastDuplicateResult != null &&
             lastDuplicateResult.getTotalDuplicateCount() > 0) {
             viewDuplicatesButton.setEnabled(true);
         }
 
-        // Rescan master button is enabled whenever master location is set (creates hash storage if needed)
         boolean canRescanMaster = configuration.getMasterBackupLocation() != null &&
                                  !scanInProgress && !backupInProgress;
         rescanMasterButton.setEnabled(canRescanMaster);
 
-        // Sync button is enabled when master location is set and there are sync locations
-        boolean syncInProgress = currentSyncService != null && !currentSyncService.isDone();
+        boolean syncInProgress = isSyncInProgress();
         boolean canSync = configuration.getMasterBackupLocation() != null &&
                          !configuration.getSyncLocations().isEmpty() &&
                          !scanInProgress && !backupInProgress && !syncInProgress;
         syncButton.setEnabled(canSync);
         syncButton.setText(syncInProgress ? "Cancel Sync" : "Sync Locations");
+
+        boolean hasSelectedFiles = !fileListPanel.getSelectedFiles().isEmpty();
+        deleteSelectedButton.setEnabled(hasSelectedFiles && !scanInProgress && !backupInProgress && !syncInProgress);
     }
 
-    // FileScanner.ScanProgressCallback and DuplicateDetectionCallback implementation
+    private void updateHashingControlsState() {
+        threadCountSpinner.setEnabled(!skipHashingCheckBox.isSelected());
+    }
+
+    // ====== IMPLEMENTACJA CALLBACKÓW ======
+
     @Override
     public void updateProgress(int current, int total, String currentFile) {
         SwingUtilities.invokeLater(() -> {
             if (total > 0) {
-                int percentage = (current * 100) / total;
-                scanProgressBar.setValue(percentage);
+                scanProgressBar.setValue((current * 100) / total);
             }
 
-            // Determine which service is running to show appropriate message
-            boolean isDuplicateDetection = (currentDuplicateService != null && !currentDuplicateService.isDone());
+            boolean isDuplicateDetection = currentDuplicateService != null && !currentDuplicateService.isDone();
 
             if (current >= total && currentFile.startsWith("Completed in ")) {
-                // Store timing information for use in completion callbacks
                 lastTimingInfo = currentFile;
-                // Final progress update with timing information from MultiThreadedHashCalculator
-                if (isDuplicateDetection) {
-                    scanProgressBar.setString("Duplicate detection " + currentFile);
-                } else {
-                    scanProgressBar.setString("Scan " + currentFile);
-                }
+                String prefix = isDuplicateDetection ? "Duplicate detection " : "Scan ";
+                scanProgressBar.setString(prefix + currentFile);
             } else if (isDuplicateDetection) {
                 scanProgressBar.setString("Detecting duplicates: " + currentFile);
                 statusLabel.setText("Analyzed " + current + " of " + total + " files for duplicates");
@@ -689,12 +671,11 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         SwingUtilities.invokeLater(() -> {
             fileListPanel.setFiles(files);
             scanProgressBar.setValue(100);
-            if (lastTimingInfo != null) {
-                scanProgressBar.setString("Scan " + lastTimingInfo + " - " + files.size() + " files found");
-                lastTimingInfo = null; // Clear after use
-            } else {
-                scanProgressBar.setString("Scan completed - " + files.size() + " files found");
-            }
+            String message = lastTimingInfo != null
+                ? "Scan " + lastTimingInfo + " - " + files.size() + " files found"
+                : "Scan completed - " + files.size() + " files found";
+            scanProgressBar.setString(message);
+            lastTimingInfo = null;
             statusLabel.setText("Found " + files.size() + " multimedia files");
             updateButtonStates();
         });
@@ -711,36 +692,21 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         });
     }
 
-    // BackupService.BackupProgressCallback and SyncService.SyncProgressCallback implementation
-    // Note: Both interfaces have the same method signature, so this implementation serves both
     @Override
-    public void updateProgress(int current, int total, String currentFile,
-                              long bytesProcessed, long totalBytes) {
+    public void updateProgress(int current, int total, String currentFile, long bytesProcessed, long totalBytes) {
         SwingUtilities.invokeLater(() -> {
             if (total > 0) {
                 int percentage = (current * 100) / total;
+                String bytesText = totalBytes > 0
+                    ? String.format(" (%.1f%% of data)", (bytesProcessed * 100.0) / totalBytes) : "";
 
-                // Determine which operation is running
-                boolean isBackup = currentBackupService != null && !currentBackupService.isDone();
-                boolean isSync = currentSyncService != null && !currentSyncService.isDone();
-
-                if (isBackup) {
+                if (isBackupInProgress()) {
                     backupProgressBar.setValue(percentage);
                     backupProgressBar.setString("Backing up: " + currentFile);
-
-                    String bytesText = "";
-                    if (totalBytes > 0) {
-                        bytesText = String.format(" (%.1f%% of data)", (bytesProcessed * 100.0) / totalBytes);
-                    }
                     statusLabel.setText("Backed up " + current + " of " + total + " files" + bytesText);
-                } else if (isSync) {
+                } else if (isSyncInProgress()) {
                     syncProgressBar.setValue(percentage);
                     syncProgressBar.setString("Syncing: " + currentFile);
-
-                    String bytesText = "";
-                    if (totalBytes > 0) {
-                        bytesText = String.format(" (%.1f%% of data)", (bytesProcessed * 100.0) / totalBytes);
-                    }
                     statusLabel.setText("Synced " + current + " of " + total + " files" + bytesText);
                 }
             }
@@ -760,10 +726,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             JOptionPane.showMessageDialog(this, message, "Backup Complete",
                     errorCount == 0 ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
 
-            // Automatically rescan master folder if backup was successful
             if (successCount > 0) {
                 statusLabel.setText("Refreshing master folder...");
-                // Trigger automatic rescan without confirmation dialog
                 performAutomaticMasterRescan();
             }
         });
@@ -776,13 +740,10 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
             if (wasCancelled) {
                 backupProgressBar.setString("Backup cancelled");
-                if (filesBackedUpBeforeCancellation > 0) {
-                    statusLabel.setText("Backup cancelled - " + filesBackedUpBeforeCancellation + " files were copied before cancellation");
-                } else {
-                    statusLabel.setText("Backup cancelled by user");
-                }
+                statusLabel.setText(filesBackedUpBeforeCancellation > 0
+                    ? "Backup cancelled - " + filesBackedUpBeforeCancellation + " files were copied before cancellation"
+                    : "Backup cancelled by user");
 
-                // Trigger rescan if any files were copied before cancellation
                 if (filesBackedUpBeforeCancellation > 0) {
                     statusLabel.setText("Backup cancelled - Refreshing master folder...");
                     performAutomaticMasterRescan();
@@ -793,7 +754,6 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                 JOptionPane.showMessageDialog(this, "Backup failed: " + error,
                         "Backup Error", JOptionPane.ERROR_MESSAGE);
             }
-
             updateButtonStates();
         });
     }
@@ -803,22 +763,20 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         SwingUtilities.invokeLater(() -> fileListPanel.updateFileStatus(file));
     }
 
-    // This method handles both FileScanner and DuplicateDetection progress updates
-    // The implementation is the same but displays different messages based on which service is running
-
     @Override
     public void detectionCompleted(DuplicateAnalysisResult result) {
         SwingUtilities.invokeLater(() -> {
             this.lastDuplicateResult = result;
             fileListPanel.setFiles(result.getSourceFiles());
             scanProgressBar.setValue(100);
-            if (result.getProcessingTimeMs() > 0) {
-                String timingInfo = "completed in " + result.getFormattedDuration() +
-                                  " (" + String.format("%.1f", result.getThroughputMbPerSec()) + " MB/s)";
-                scanProgressBar.setString("Duplicate detection " + timingInfo + " - " + result.getTotalSourceFiles() + " files found");
-            } else {
-                scanProgressBar.setString("Duplicate detection completed - " + result.getTotalSourceFiles() + " files found");
-            }
+
+            String message = result.getProcessingTimeMs() > 0
+                ? "Duplicate detection completed in " + result.getFormattedDuration() +
+                  " (" + String.format("%.1f", result.getThroughputMbPerSec()) + " MB/s) - " +
+                  result.getTotalSourceFiles() + " files found"
+                : "Duplicate detection completed - " + result.getTotalSourceFiles() + " files found";
+
+            scanProgressBar.setString(message);
             statusLabel.setText("Found " + result.getNewFileCount() + " new files, " +
                               result.getTotalDuplicateCount() + " duplicates");
             viewDuplicatesButton.setEnabled(result.getTotalDuplicateCount() > 0);
@@ -837,7 +795,6 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         });
     }
 
-    // SyncService.SyncProgressCallback implementation
     @Override
     public void syncCompleted(SyncResult result) {
         SwingUtilities.invokeLater(() -> {
@@ -847,16 +804,12 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                               result.getFailureCount() + " failed");
             updateButtonStates();
 
-            StringBuilder message = new StringBuilder();
-            message.append("Sync completed!\n\n");
-
+            StringBuilder message = new StringBuilder("Sync completed!\n\n");
             if (!result.getSuccessfulLocations().isEmpty()) {
                 message.append("Successfully synced to:\n");
-                for (File location : result.getSuccessfulLocations()) {
-                    message.append("• ").append(location.getAbsolutePath()).append("\n");
-                }
+                result.getSuccessfulLocations().forEach(loc ->
+                    message.append("• ").append(loc.getAbsolutePath()).append("\n"));
             }
-
             if (!result.getFailedLocations().isEmpty()) {
                 message.append("\nFailed to sync to:\n");
                 for (Map.Entry<File, String> entry : result.getFailedLocations().entrySet()) {
@@ -881,43 +834,101 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         });
     }
 
+    // ====== IMPLEMENTACJA CALLBACKÓW USUWANIA ======
+
+    @Override
+    public void deleteCompleted(FileDeleteService.DeleteResult result) {
+        SwingUtilities.invokeLater(() -> {
+            scanProgressBar.setValue(100);
+            deleteSelectedButton.setText("Delete Selected");
+
+            // Odśwież listę plików - usuń usunięte pliki
+            List<BackupFile> remainingFiles = fileListPanel.getAllFiles().stream()
+                .filter(f -> f.getSourceFile().exists())
+                .toList();
+            fileListPanel.setFiles(new java.util.ArrayList<>(remainingFiles));
+            fileListPanel.updateSummary();
+
+            String sizeText = org.example.util.FileUtilities.formatFileSize(result.getTotalDeletedSize());
+            scanProgressBar.setString("Deleted " + result.getDeletedCount() + " files (" + sizeText + ")");
+            statusLabel.setText("Deleted " + result.getDeletedCount() + " files" +
+                (result.hasFailures() ? " (" + result.getFailedCount() + " failed)" : ""));
+
+            // Pokaż wynik operacji
+            if (result.hasFailures()) {
+                StringBuilder message = new StringBuilder();
+                message.append(String.format("Deleted: %d files\nFailed: %d files\n\n",
+                    result.getDeletedCount(), result.getFailedCount()));
+                message.append("Failed files:\n");
+                result.getFailedFiles().stream().limit(10).forEach(f ->
+                    message.append("• ").append(f.file().getFileName())
+                           .append(" - ").append(f.reason()).append("\n"));
+                if (result.getFailedCount() > 10) {
+                    message.append("... and ").append(result.getFailedCount() - 10).append(" more\n");
+                }
+                showWarning(message.toString(), "Delete Partially Complete");
+            } else {
+                JOptionPane.showMessageDialog(this,
+                    String.format("Successfully deleted %d files (%s).",
+                        result.getDeletedCount(), sizeText),
+                    "Delete Complete", JOptionPane.INFORMATION_MESSAGE);
+            }
+
+            updateButtonStates();
+        });
+    }
+
+    @Override
+    public void deleteFailed(String error) {
+        SwingUtilities.invokeLater(() -> {
+            scanProgressBar.setString("Delete failed: " + error);
+            statusLabel.setText("Delete failed");
+            deleteSelectedButton.setText("Delete Selected");
+            updateButtonStates();
+
+            if (!error.toLowerCase().contains("cancel")) {
+                JOptionPane.showMessageDialog(this, "Delete failed: " + error,
+                    "Delete Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+    }
+
+    // ====== OPERACJE HASH STORAGE ======
+
     private void initializeHashStorage() {
-        if (configuration.getMasterBackupLocation() != null &&
-            configuration.getMasterBackupLocation().exists()) {
+        if (configuration.getMasterBackupLocation() == null ||
+            !configuration.getMasterBackupLocation().exists()) {
+            return;
+        }
 
-            hashStorageService = new HashStorageService(configuration.getMasterBackupLocation(),
-                configuration.getHashingThreadCount());
+        hashStorageService = new HashStorageService(configuration.getMasterBackupLocation(),
+            configuration.getHashingThreadCount());
 
-            // Validate and update hashes on startup using multi-threaded approach
-            SwingWorker<HashStorageService.ValidationResult, String> validator =
-                new SwingWorker<>() {
+        SwingWorker<HashStorageService.ValidationResult, String> validator = new SwingWorker<>() {
+            @Override
+            protected HashStorageService.ValidationResult doInBackground() throws Exception {
+                MultiThreadedHashCalculator.ProgressCallback progressCallback =
+                    (current, total, currentFile, _) -> {
+                        setProgress(Math.min((current * 100) / Math.max(1, total), 100));
+                        publish("Validating: " + currentFile + " (" + current + "/" + total + ")");
+                    };
+                return hashStorageService.validateAndUpdateHashesMultiThreaded(progressCallback, null);
+            }
 
-                @Override
-                protected HashStorageService.ValidationResult doInBackground() throws Exception {
-                    // Progress callback for startup validation
-                    MultiThreadedHashCalculator.ProgressCallback progressCallback =
-                        (current, total, currentFile, _) -> {
-                            int percentage = total > 0 ? (current * 100) / total : 0;
-                            setProgress(Math.min(percentage, 100));
-                            publish("Validating: " + currentFile + " (" + current + "/" + total + ")");
-                        };
-
-                    return hashStorageService.validateAndUpdateHashesMultiThreaded(progressCallback, null);
+            @Override
+            protected void process(java.util.List<String> chunks) {
+                if (!chunks.isEmpty()) {
+                    statusLabel.setText(chunks.getLast());
                 }
+            }
 
-                @Override
-                protected void process(java.util.List<String> chunks) {
-                    if (!chunks.isEmpty()) {
-                        String lastMessage = chunks.getLast();
-                        statusLabel.setText(lastMessage);
-                    }
-                }
-
-                @Override
-                protected void done() {
-                    try {
-                        HashStorageService.ValidationResult result = get();
-                        if (result.hasChanges()) {
+            @Override
+            protected void done() {
+                try {
+                    HashStorageService.ValidationResult result = get();
+                    if (result.hasChanges()) {
+                        statusLabel.setText("Master folder updated: " + result.getTotalChanges() + " changes");
+                        if (result.getTotalChanges() > 10) {
                             String message = String.format("""
                                 Master folder validation completed:
                                 New files: %d
@@ -925,34 +936,24 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                                 Deleted files: %d""",
                                 result.getNewFiles().size(),
                                 result.getModifiedFiles().size(),
-                                result.getDeletedFiles().size()
-                            );
-
-                            statusLabel.setText("Master folder updated: " + result.getTotalChanges() + " changes");
-
-                            if (result.getTotalChanges() > 10) {
-                                // Show summary for large changes
-                                JOptionPane.showMessageDialog(MainWindow.this, message,
-                                        "Master Folder Updated", JOptionPane.INFORMATION_MESSAGE);
-                            }
-                        } else {
-                            statusLabel.setText("Master folder is up to date");
+                                result.getDeletedFiles().size());
+                            JOptionPane.showMessageDialog(MainWindow.this, message,
+                                    "Master Folder Updated", JOptionPane.INFORMATION_MESSAGE);
                         }
-                    } catch (Exception e) {
-                        statusLabel.setText("Hash validation failed: " + e.getMessage());
-                        System.err.println("Hash validation error: " + e.getMessage());
+                    } else {
+                        statusLabel.setText("Master folder is up to date");
                     }
+                } catch (Exception e) {
+                    statusLabel.setText("Hash validation failed: " + e.getMessage());
                 }
-            };
-
-            validator.execute();
-        }
+            }
+        };
+        validator.execute();
     }
 
     private void viewDuplicates() {
         if (lastDuplicateResult != null) {
-            DuplicateViewerWindow viewer = new DuplicateViewerWindow(this, lastDuplicateResult);
-            viewer.setVisible(true);
+            new DuplicateViewerWindow(this, lastDuplicateResult).setVisible(true);
         } else {
             JOptionPane.showMessageDialog(this,
                     "No duplicate analysis available. Please run a scan with duplicate detection enabled first.",
@@ -960,215 +961,89 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         }
     }
 
-    /**
-     * Loads saved configuration into the UI components.
-     */
     private void loadSavedConfiguration() {
-        // Load master backup location
         if (configuration.getMasterBackupLocation() != null) {
             masterLocationLabel.setText(configuration.getMasterBackupLocation().getAbsolutePath());
         }
 
-        // Load source directories
         sourceListModel.clear();
-        for (File sourceDir : configuration.getSourceDirectories()) {
-            sourceListModel.addElement(sourceDir);
-        }
+        configuration.getSourceDirectories().forEach(sourceListModel::addElement);
 
-        // Load sync locations
         syncListModel.clear();
-        for (File syncLocation : configuration.getSyncLocations()) {
-            syncListModel.addElement(syncLocation);
-        }
+        configuration.getSyncLocations().forEach(syncListModel::addElement);
 
-        // Load checkbox states
         includeSubdirectoriesCheckBox.setSelected(configuration.isIncludeSubdirectories());
         createDateFoldersCheckBox.setSelected(configuration.isCreateDateFolders());
-
-        // Load thread count
+        skipHashingCheckBox.setSelected(configuration.isSkipHashing());
         threadCountSpinner.setValue(configuration.getHashingThreadCount());
 
-        // Show notification if configuration was loaded
+        updateHashingControlsState();
+
         if (configPersistenceService.hasConfiguration()) {
             statusLabel.setText("Configuration loaded from: " + configPersistenceService.getConfigurationPath());
         }
     }
 
-    /**
-     * Saves current configuration to persistent storage.
-     */
     private void saveConfiguration() {
         configPersistenceService.saveConfiguration(configuration);
     }
 
-    /**
-     * Rescans the master backup folder to update hash database.
-     */
     private void rescanMasterFolder() {
         if (configuration.getMasterBackupLocation() == null) {
-            JOptionPane.showMessageDialog(this,
-                    "No master backup location configured.",
-                    "Configuration Error", JOptionPane.WARNING_MESSAGE);
+            showWarning("No master backup location configured.", "Configuration Error");
             return;
         }
 
-        // Initialize hash storage if it doesn't exist
         if (hashStorageService == null) {
             initializeHashStorage();
         }
 
-        int result = JOptionPane.showConfirmDialog(this,
-                """
+        if (!confirmAction("""
                 This will rescan the entire master backup folder and update the hash database.
                 This may take some time depending on the number of files.
                 
-                Do you want to continue?""",
-                "Confirm Master Folder Rescan",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.QUESTION_MESSAGE);
-
-        if (result != JOptionPane.YES_OPTION) {
+                Do you want to continue?""", "Confirm Master Folder Rescan")) {
             return;
         }
 
-        // Disable buttons during rescan
         rescanMasterButton.setEnabled(false);
         scanButton.setEnabled(false);
         backupButton.setEnabled(false);
-
-        // Update status and progress
         statusLabel.setText("Rescanning master backup folder...");
         scanProgressBar.setValue(0);
         scanProgressBar.setString("Rescanning master folder...");
 
-        // Perform rescan in background thread with multi-threaded hashing
-        SwingWorker<HashStorageService.ValidationResult, String> rescanWorker =
-            new SwingWorker<>() {
-
-            @Override
-            protected HashStorageService.ValidationResult doInBackground() throws Exception {
-                // Progress callback for multi-threaded hash calculation
-                MultiThreadedHashCalculator.ProgressCallback progressCallback =
-                    (current, total, currentFile, _) -> {
-                        if (!isCancelled()) {
-                            int percentage = total > 0 ? (current * 100) / total : 0;
-                            setProgress(Math.min(percentage, 100));
-
-                            if (current >= total && currentFile.startsWith("Completed in ")) {
-                                // Store timing information for final message
-                                lastTimingInfo = currentFile;
-                                publish("Master folder rescan " + currentFile);
-                            } else {
-                                publish("Processing: " + currentFile + " (" + current + "/" + total + ")");
-                            }
-                        }
-                    };
-
-                // Cancellation check using built-in isCancelled method
-                java.util.function.BooleanSupplier isCancelledSupplier = this::isCancelled;
-
-                return hashStorageService.forceRehashMultiThreaded(progressCallback, isCancelledSupplier);
-            }
-
-            @Override
-            protected void process(java.util.List<String> chunks) {
-                if (!chunks.isEmpty()) {
-                    String lastMessage = chunks.getLast();
-                    scanProgressBar.setString(lastMessage);
-                    statusLabel.setText("Rescanning master folder: " + lastMessage);
-                }
-            }
-
-            // Note: Cannot override cancel() as it's final, so we handle cancellation through the cancelled flag
-
-            @Override
-            protected void done() {
-                try {
-                    HashStorageService.ValidationResult result = get();
-
-                    // Update UI with results
-                    scanProgressBar.setValue(100);
-                    if (result.getProcessingTimeMs() > 0) {
-                        String timingInfo = "completed in " + result.getFormattedDuration() +
-                                          " (" + String.format("%.1f", result.getThroughputMbPerSec()) + " MB/s)";
-                        scanProgressBar.setString("Master folder rescan " + timingInfo);
-                    } else {
-                        scanProgressBar.setString("Master folder rescan completed");
-                    }
-
-                    String message = String.format("""
-                        Master folder rescan completed successfully!
-                        
-                        Files processed:
-                        • New files: %d
-                        • Modified files: %d
-                        • Removed files: %d
-                        
-                        Total changes: %d""",
-                        result.getNewFiles().size(),
-                        result.getModifiedFiles().size(),
-                        result.getDeletedFiles().size(),
-                        result.getTotalChanges()
-                    );
-
-                    statusLabel.setText("Master folder rescan completed: " + result.getTotalChanges() + " changes detected");
-
-                    JOptionPane.showMessageDialog(MainWindow.this, message,
-                            "Rescan Complete", JOptionPane.INFORMATION_MESSAGE);
-
-                } catch (Exception e) {
-                    scanProgressBar.setString("Rescan failed");
-                    statusLabel.setText("Master folder rescan failed: " + e.getMessage());
-
-                    JOptionPane.showMessageDialog(MainWindow.this,
-                            "Failed to rescan master folder:\n" + e.getMessage(),
-                            "Rescan Error", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    // Re-enable buttons
-                    updateButtonStates();
-                }
-            }
-        };
-
-        rescanWorker.execute();
+        createRescanWorker(false).execute();
     }
 
-    /**
-     * Performs an automatic rescan of the master folder without user confirmation.
-     * Used after successful backups to update the hash database.
-     */
     private void performAutomaticMasterRescan() {
         if (configuration.getMasterBackupLocation() == null || hashStorageService == null) {
             return;
         }
 
-        // Update status and progress
         scanProgressBar.setValue(0);
         scanProgressBar.setString("Refreshing master folder...");
 
-        // Perform rescan in background thread
-        SwingWorker<HashStorageService.ValidationResult, String> rescanWorker =
-            new SwingWorker<>() {
+        createRescanWorker(true).execute();
+    }
 
+    private SwingWorker<HashStorageService.ValidationResult, String> createRescanWorker(boolean isAutomatic) {
+        return new SwingWorker<>() {
             @Override
             protected HashStorageService.ValidationResult doInBackground() throws Exception {
-                // Progress callback for multi-threaded hash calculation
                 MultiThreadedHashCalculator.ProgressCallback progressCallback =
                     (current, total, currentFile, _) -> {
                         if (!isCancelled()) {
-                            int percentage = total > 0 ? (current * 100) / total : 0;
-                            setProgress(Math.min(percentage, 100));
-
+                            setProgress(Math.min((current * 100) / Math.max(1, total), 100));
                             if (current >= total && currentFile.startsWith("Completed in ")) {
-                                publish("Master folder refresh " + currentFile);
+                                lastTimingInfo = currentFile;
+                                publish("Master folder " + (isAutomatic ? "refresh " : "rescan ") + currentFile);
                             } else {
-                                publish("Refreshing: " + current + "/" + total);
+                                publish((isAutomatic ? "Refreshing: " : "Processing: ") + current + "/" + total);
                             }
                         }
                     };
-
-                java.util.function.BooleanSupplier isCancelledSupplier = this::isCancelled;
-                return hashStorageService.forceRehashMultiThreaded(progressCallback, isCancelledSupplier);
+                return hashStorageService.forceRehashMultiThreaded(progressCallback, this::isCancelled);
             }
 
             @Override
@@ -1176,6 +1051,9 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                 if (!chunks.isEmpty()) {
                     String lastMessage = chunks.getLast();
                     scanProgressBar.setString(lastMessage);
+                    if (!isAutomatic) {
+                        statusLabel.setText("Rescanning master folder: " + lastMessage);
+                    }
                 }
             }
 
@@ -1185,30 +1063,49 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                     HashStorageService.ValidationResult result = get();
                     scanProgressBar.setValue(100);
 
-                    if (result.getProcessingTimeMs() > 0) {
-                        String timingInfo = "completed in " + result.getFormattedDuration() +
-                                          " (" + String.format("%.1f", result.getThroughputMbPerSec()) + " MB/s)";
-                        scanProgressBar.setString("Master folder refresh " + timingInfo);
-                    } else {
-                        scanProgressBar.setString("Master folder refreshed");
-                    }
+                    String timingInfo = result.getProcessingTimeMs() > 0
+                        ? "completed in " + result.getFormattedDuration() +
+                          " (" + String.format("%.1f", result.getThroughputMbPerSec()) + " MB/s)"
+                        : (isAutomatic ? "refreshed" : "completed");
 
-                    statusLabel.setText("Master folder refreshed: " + result.getTotalChanges() + " changes detected");
+                    scanProgressBar.setString("Master folder " + (isAutomatic ? "refresh " : "rescan ") + timingInfo);
+                    statusLabel.setText("Master folder " + (isAutomatic ? "refreshed" : "rescan completed") +
+                                       ": " + result.getTotalChanges() + " changes detected");
+
+                    if (!isAutomatic) {
+                        String message = String.format("""
+                            Master folder rescan completed successfully!
+                            
+                            Files processed:
+                            • New files: %d
+                            • Modified files: %d
+                            • Removed files: %d
+                            
+                            Total changes: %d""",
+                            result.getNewFiles().size(),
+                            result.getModifiedFiles().size(),
+                            result.getDeletedFiles().size(),
+                            result.getTotalChanges());
+                        JOptionPane.showMessageDialog(MainWindow.this, message,
+                                "Rescan Complete", JOptionPane.INFORMATION_MESSAGE);
+                    }
                 } catch (Exception e) {
-                    scanProgressBar.setString("Refresh failed");
-                    statusLabel.setText("Master folder refresh failed: " + e.getMessage());
+                    scanProgressBar.setString((isAutomatic ? "Refresh" : "Rescan") + " failed");
+                    statusLabel.setText("Master folder " + (isAutomatic ? "refresh" : "rescan") +
+                                       " failed: " + e.getMessage());
+                    if (!isAutomatic) {
+                        JOptionPane.showMessageDialog(MainWindow.this,
+                                "Failed to rescan master folder:\n" + e.getMessage(),
+                                "Rescan Error", JOptionPane.ERROR_MESSAGE);
+                    }
                 } finally {
                     updateButtonStates();
                 }
             }
         };
-
-        rescanWorker.execute();
     }
 
-    /**
-     * Override window closing to save configuration before exit.
-     */
+
     @Override
     protected void processWindowEvent(java.awt.event.WindowEvent e) {
         if (e.getID() == java.awt.event.WindowEvent.WINDOW_CLOSING) {
