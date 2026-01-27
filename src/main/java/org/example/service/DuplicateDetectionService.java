@@ -1,9 +1,9 @@
 package org.example.service;
 
-import org.example.model.BackupFile;
 import org.example.model.BackupConfiguration;
-import org.example.util.MultiThreadedHashCalculator;
+import org.example.model.BackupFile;
 import org.example.util.FileUtilities;
+import org.example.util.MultiThreadedHashCalculator;
 
 import javax.swing.*;
 import java.io.File;

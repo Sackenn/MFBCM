@@ -21,17 +21,14 @@ public class BackupConfiguration {
     private boolean skipHashing = false;
     private int hashingThreadCount = DEFAULT_THREAD_COUNT;
 
-    // ====== LOKALIZACJA GŁÓWNEJ KOPII ZAPASOWEJ ======
+    // ====== LOKALIZACJA GŁÓWNA ======
 
     public File getMasterBackupLocation() { return masterBackupLocation; }
-
     public void setMasterBackupLocation(File location) { this.masterBackupLocation = location; }
 
     // ====== KATALOGI ŹRÓDŁOWE ======
 
-    public List<File> getSourceDirectories() {
-        return Collections.unmodifiableList(sourceDirectories);
-    }
+    public List<File> getSourceDirectories() { return Collections.unmodifiableList(sourceDirectories); }
 
     public void addSourceDirectory(File directory) {
         if (isValidDirectory(directory) && !sourceDirectories.contains(directory)) {
@@ -39,15 +36,11 @@ public class BackupConfiguration {
         }
     }
 
-    public void removeSourceDirectory(File directory) {
-        sourceDirectories.remove(directory);
-    }
+    public void removeSourceDirectory(File directory) { sourceDirectories.remove(directory); }
 
     // ====== LOKALIZACJE SYNCHRONIZACJI ======
 
-    public List<File> getSyncLocations() {
-        return Collections.unmodifiableList(syncLocations);
-    }
+    public List<File> getSyncLocations() { return Collections.unmodifiableList(syncLocations); }
 
     public void addSyncLocation(File location) {
         if (isValidDirectory(location) && !syncLocations.contains(location)) {
@@ -55,34 +48,29 @@ public class BackupConfiguration {
         }
     }
 
-    public void removeSyncLocation(File location) {
-        syncLocations.remove(location);
-    }
+    public void removeSyncLocation(File location) { syncLocations.remove(location); }
 
     // ====== OPCJE ======
 
     public boolean isIncludeSubdirectories() { return includeSubdirectories; }
-
     public void setIncludeSubdirectories(boolean value) { this.includeSubdirectories = value; }
 
     public boolean isCreateDateFolders() { return createDateFolders; }
-
     public void setCreateDateFolders(boolean value) { this.createDateFolders = value; }
 
     public boolean isSkipHashing() { return skipHashing; }
-
     public void setSkipHashing(boolean value) { this.skipHashing = value; }
 
     public int getHashingThreadCount() { return hashingThreadCount; }
 
     public void setHashingThreadCount(int count) {
         int maxThreads = DEFAULT_THREAD_COUNT * MAX_THREAD_MULTIPLIER;
-        this.hashingThreadCount = Math.max(1, Math.min(count, maxThreads));
+        this.hashingThreadCount = Math.clamp(count, 1, maxThreads);
     }
 
-    // ====== METODY POMOCNICZE ======
+    // ====== WALIDACJA ======
 
     private boolean isValidDirectory(File directory) {
-        return directory != null && directory.exists() && directory.isDirectory();
+        return directory != null && directory.isDirectory();
     }
 }

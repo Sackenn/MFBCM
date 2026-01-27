@@ -3,7 +3,12 @@ package org.example.util;
 import org.example.model.BackupConfiguration;
 
 import java.io.File;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Narzędzia do operacji na plikach multimedialnych.
@@ -19,19 +24,18 @@ public final class FileUtilities {
         "mpg", "mpeg", "m2v", "mts", "ts", "vob", "asf", "rm", "rmvb"
     );
 
-    private FileUtilities() {
-        throw new UnsupportedOperationException("Klasa narzędziowa");
-    }
+    private static final long KB = 1024;
+    private static final long MB = KB * 1024;
+    private static final long GB = MB * 1024;
+
+    private FileUtilities() {}
 
     // ====== SPRAWDZANIE PLIKÓW ======
 
     public static boolean isMultimediaFile(File file) {
-        String name = file.getName().toLowerCase();
+        String name = file.getName();
         int lastDot = name.lastIndexOf('.');
-        if (lastDot > 0 && lastDot < name.length() - 1) {
-            return MULTIMEDIA_EXTENSIONS.contains(name.substring(lastDot + 1));
-        }
-        return false;
+        return lastDot > 0 && MULTIMEDIA_EXTENSIONS.contains(name.substring(lastDot + 1).toLowerCase());
     }
 
     // ====== ZBIERANIE PLIKÓW ======
@@ -45,11 +49,10 @@ public final class FileUtilities {
     public static void collectFilesFromDirectory(File directory, List<File> allFiles,
                                                  boolean includeSubdirectories,
                                                  CancelCheck cancelCheck) {
-        if (!directory.exists() || !directory.isDirectory()) return;
-        if (cancelCheck != null && cancelCheck.isCancelled()) return;
+        if (!directory.isDirectory() || (cancelCheck != null && cancelCheck.isCancelled())) return;
 
         File[] files = directory.listFiles();
-        if (files == null || files.length == 0) return;
+        if (files == null) return;
 
         Arrays.sort(files, Comparator.comparing(File::getName));
 
@@ -67,34 +70,25 @@ public final class FileUtilities {
     // ====== FORMATOWANIE ======
 
     public static String formatDuration(long milliseconds) {
-        if (milliseconds < 1000) {
-            return milliseconds + "ms";
-        } else if (milliseconds < 60000) {
-            return String.format("%.1fs", milliseconds / 1000.0);
-        } else {
-            long minutes = milliseconds / 60000;
-            long seconds = (milliseconds % 60000) / 1000;
-            return minutes + "m " + seconds + "s";
-        }
+        if (milliseconds < 1000) return milliseconds + "ms";
+        if (milliseconds < 60000) return String.format("%.1fs", milliseconds / 1000.0);
+        return (milliseconds / 60000) + "m " + ((milliseconds % 60000) / 1000) + "s";
     }
 
     public static String formatFileSize(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
-        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
-        return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+        if (bytes < KB) return bytes + " B";
+        if (bytes < MB) return String.format("%.1f KB", bytes / (double) KB);
+        if (bytes < GB) return String.format("%.1f MB", bytes / (double) MB);
+        return String.format("%.2f GB", bytes / (double) GB);
     }
 
     // ====== EXECUTORY ======
 
-    /**
-     * Bezpiecznie zamyka ExecutorService z limitem czasu.
-     */
-    public static void shutdownExecutor(java.util.concurrent.ExecutorService executor, int timeoutSeconds) {
+    public static void shutdownExecutor(ExecutorService executor, int timeoutSeconds) {
         if (executor == null) return;
         executor.shutdown();
         try {
-            if (!executor.awaitTermination(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)) {
+            if (!executor.awaitTermination(timeoutSeconds, TimeUnit.SECONDS)) {
                 executor.shutdownNow();
             }
         } catch (InterruptedException e) {

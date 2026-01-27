@@ -3,7 +3,10 @@ package org.example.service;
 import org.example.model.BackupFile;
 import org.example.util.FileUtilities;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Wynik analizy duplikatów plików między katalogiem źródłowym a główną kopią zapasową.
@@ -17,11 +20,12 @@ public class DuplicateAnalysisResult {
     private final List<BackupFile> newFiles = new ArrayList<>();
     private final List<DuplicatePair> duplicatePairs = new ArrayList<>();
     private final Map<String, List<BackupFile>> sourceDuplicateGroups = new HashMap<>();
-    private long processingTimeMs = 0;
-    private double throughputMbPerSec = 0.0;
+    private long processingTimeMs;
+    private double throughputMbPerSec;
 
-    // ====== SETTERY Z KOPIOWANIEM ======
+    // ====== SETTERY ======
 
+    public void setMasterFileCount(int count) { this.masterFileCount = count; }
     public void setSourceFiles(List<BackupFile> files) { replaceList(sourceFiles, files); }
     public void setDuplicatesInMaster(List<BackupFile> files) { replaceList(duplicatesInMaster, files); }
     public void setDuplicatesInSource(List<BackupFile> files) { replaceList(duplicatesInSource, files); }
@@ -33,21 +37,19 @@ public class DuplicateAnalysisResult {
         sourceDuplicateGroups.putAll(groups);
     }
 
-    private <T> void replaceList(List<T> target, List<T> source) {
-        target.clear();
-        target.addAll(source);
-    }
+    public void setProcessingTimeMs(long time) { this.processingTimeMs = time; }
+    public void setThroughputMbPerSec(double throughput) { this.throughputMbPerSec = throughput; }
 
     // ====== GETTERY ======
 
     public int getMasterFileCount() { return masterFileCount; }
-    public void setMasterFileCount(int count) { this.masterFileCount = count; }
-
     public List<BackupFile> getSourceFiles() { return sourceFiles; }
     public List<BackupFile> getDuplicatesInMaster() { return duplicatesInMaster; }
     public List<BackupFile> getDuplicatesInSource() { return duplicatesInSource; }
     public List<DuplicatePair> getDuplicatePairs() { return duplicatePairs; }
     public Map<String, List<BackupFile>> getSourceDuplicateGroups() { return sourceDuplicateGroups; }
+    public long getProcessingTimeMs() { return processingTimeMs; }
+    public double getThroughputMbPerSec() { return throughputMbPerSec; }
 
     // ====== STATYSTYKI ======
 
@@ -56,14 +58,12 @@ public class DuplicateAnalysisResult {
     public int getDuplicateInSourceCount() { return duplicatesInSource.size(); }
     public int getTotalDuplicateCount() { return duplicatesInMaster.size() + duplicatesInSource.size(); }
     public int getNewFileCount() { return newFiles.size(); }
-
-    // ====== CZAS PRZETWARZANIA ======
-
-    public void setProcessingTimeMs(long time) { this.processingTimeMs = time; }
-    public long getProcessingTimeMs() { return processingTimeMs; }
-
-    public void setThroughputMbPerSec(double throughput) { this.throughputMbPerSec = throughput; }
-    public double getThroughputMbPerSec() { return throughputMbPerSec; }
-
     public String getFormattedDuration() { return FileUtilities.formatDuration(processingTimeMs); }
+
+    // ====== POMOCNICZE ======
+
+    private <T> void replaceList(List<T> target, List<T> source) {
+        target.clear();
+        target.addAll(source);
+    }
 }

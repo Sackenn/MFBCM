@@ -22,14 +22,7 @@ public class BackupFile {
         "mpg", "mpeg", "m2v", "mts", "ts", "vob", "asf", "rm", "rmvb"
     );
 
-    private static final Set<String> IMAGE_EXTENSIONS = Set.of(
-        "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "svg",
-        "raw", "cr2", "nef", "dng", "arw", "orf", "rw2", "pef", "srw"
-    );
-
-    public enum BackupStatus {
-        PENDING, IN_PROGRESS, COMPLETED, ERROR, DUPLICATE
-    }
+    public enum BackupStatus { PENDING, IN_PROGRESS, COMPLETED, ERROR, DUPLICATE }
 
     private final File sourceFile;
     private final String hash;
@@ -40,15 +33,14 @@ public class BackupFile {
     private boolean existsInMaster = false;
 
     public BackupFile(File sourceFile, String hash) {
-        this.sourceFile = sourceFile;
+        this.sourceFile = Objects.requireNonNull(sourceFile);
         this.hash = hash;
         this.size = sourceFile.length();
         this.lastModified = LocalDateTime.ofInstant(
-            Instant.ofEpochMilli(sourceFile.lastModified()),
-            ZoneId.systemDefault()
-        );
+            Instant.ofEpochMilli(sourceFile.lastModified()), ZoneId.systemDefault());
     }
 
+    // ====== PODSTAWOWE GETTERY ======
 
     public File getSourceFile() { return sourceFile; }
     public String getFileName() { return sourceFile.getName(); }
@@ -57,10 +49,12 @@ public class BackupFile {
     public long getSize() { return size; }
     public LocalDateTime getLastModified() { return lastModified; }
 
+    // ====== FORMATOWANIE ======
 
     public String getFormattedSize() { return FileUtilities.formatFileSize(size); }
     public String getFormattedDate() { return lastModified.format(DATE_FORMATTER); }
 
+    // ====== STAN ======
 
     public boolean isSelected() { return selected; }
     public void setSelected(boolean selected) { this.selected = selected; }
@@ -71,6 +65,7 @@ public class BackupFile {
     public boolean isExistsInMaster() { return existsInMaster; }
     public void setExistsInMaster(boolean existsInMaster) { this.existsInMaster = existsInMaster; }
 
+    // ====== TYP PLIKU ======
 
     public String getFileExtension() {
         String name = sourceFile.getName();
@@ -79,8 +74,9 @@ public class BackupFile {
     }
 
     public boolean isVideo() { return VIDEO_EXTENSIONS.contains(getFileExtension()); }
-    public boolean isImage() { return IMAGE_EXTENSIONS.contains(getFileExtension()); }
+    public boolean isImage() { return !isVideo(); }
 
+    // ====== OBJECT METHODS ======
 
     @Override
     public String toString() { return getFileName(); }
@@ -88,11 +84,10 @@ public class BackupFile {
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-        BackupFile that = (BackupFile) obj;
+        if (!(obj instanceof BackupFile that)) return false;
         return Objects.equals(hash, that.hash);
     }
 
     @Override
-    public int hashCode() { return hash != null ? hash.hashCode() : 0; }
+    public int hashCode() { return Objects.hashCode(hash); }
 }

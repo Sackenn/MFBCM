@@ -152,9 +152,6 @@ public final class UIConstants {
         return GROUP_COLORS[(groupId - 1) % GROUP_COLORS.length];
     }
 
-    // Prywatny konstruktor - klasa narzędziowa
-    private UIConstants() {
-        throw new UnsupportedOperationException("Klasa narzędziowa");
-    }
+    private UIConstants() {}
 }
 

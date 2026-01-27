@@ -1,9 +1,9 @@
 package org.example.service;
 
-import org.example.model.BackupFile;
 import org.example.model.BackupConfiguration;
-import org.example.util.MultiThreadedHashCalculator;
+import org.example.model.BackupFile;
 import org.example.util.FileUtilities;
+import org.example.util.MultiThreadedHashCalculator;
 
 import javax.swing.*;
 import java.io.File;
@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Serwis skanowania katalogów i znajdowania plików multimedialnych.
- * Używa xxHash3 dla ultra-szybkiego haszowania plików.
  */
 public class FileScanner extends SwingWorker<List<BackupFile>, String> {
 
@@ -29,13 +28,11 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
     }
 
     public FileScanner(BackupConfiguration configuration, ScanProgressCallback progressCallback) {
-        Objects.requireNonNull(configuration, "configuration cannot be null");
+        this.configuration = Objects.requireNonNull(configuration);
+        this.progressCallback = progressCallback;
         if (configuration.getSourceDirectories().isEmpty()) {
             throw new IllegalArgumentException("Source directories cannot be empty");
         }
-
-        this.configuration = configuration;
-        this.progressCallback = progressCallback;
     }
 
     @Override
@@ -45,11 +42,8 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
         publish("Collecting files...");
         List<File> allFiles = collectAllFiles();
         totalFiles = allFiles.size();
-        scannedFiles = 0;
 
-        if (allFiles.isEmpty()) {
-            return new ArrayList<>();
-        }
+        if (allFiles.isEmpty()) return List.of();
 
         List<BackupFile> foundFiles = configuration.isSkipHashing()
             ? scanWithMetadata(allFiles)
@@ -59,12 +53,10 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
         return foundFiles;
     }
 
-    private List<File> collectAllFiles() throws CancellationException {
+    private List<File> collectAllFiles() {
         List<File> allFiles = new ArrayList<>();
         for (File sourceDir : configuration.getSourceDirectories()) {
-            if (isCancelled()) {
-                throw new CancellationException("Scan cancelled by user");
-            }
+            if (isCancelled()) throw new CancellationException("Scan cancelled");
             FileUtilities.collectFilesFromDirectory(sourceDir, allFiles, configuration, this::isCancelled);
         }
         return allFiles;
@@ -77,17 +69,11 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
         List<BackupFile> allBackupFiles = new CopyOnWriteArrayList<>();
         AtomicInteger processedCount = new AtomicInteger(0);
 
-        ExecutorService executor = Executors.newFixedThreadPool(configuration.getHashingThreadCount(),
-            r -> {
-                Thread t = new Thread(r, "MetadataScanner-" + System.currentTimeMillis());
-                t.setDaemon(false);
-                return t;
-            });
+        ExecutorService executor = Executors.newFixedThreadPool(configuration.getHashingThreadCount());
         try {
             List<Future<?>> futures = new ArrayList<>();
             for (File file : allFiles) {
-                futures.add(executor.submit(() ->
-                    processFileMetadata(file, metadataMap, allBackupFiles, processedCount)));
+                futures.add(executor.submit(() -> processFileMetadata(file, metadataMap, allBackupFiles, processedCount)));
             }
             waitForFutures(futures);
         } finally {
@@ -98,28 +84,23 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
     }
 
     private void processFileMetadata(File file, Map<String, BackupFile> metadataMap,
-            List<BackupFile> allBackupFiles, AtomicInteger processedCount) {
+                                     List<BackupFile> allBackupFiles, AtomicInteger processedCount) {
         if (isCancelled()) return;
 
-        try {
-            String metadataKey = file.getName() + "|" + file.length();
-            BackupFile backupFile = new BackupFile(file, null);
+        String metadataKey = file.getName() + "|" + file.length();
+        BackupFile backupFile = new BackupFile(file, null);
 
-            BackupFile existing = metadataMap.putIfAbsent(metadataKey, backupFile);
-            if (existing != null) {
-                backupFile.setStatus(BackupFile.BackupStatus.DUPLICATE);
-                backupFile.setSelected(false);
-            }
+        if (metadataMap.putIfAbsent(metadataKey, backupFile) != null) {
+            backupFile.setStatus(BackupFile.BackupStatus.DUPLICATE);
+            backupFile.setSelected(false);
+        }
 
-            allBackupFiles.add(backupFile);
+        allBackupFiles.add(backupFile);
 
-            int current = processedCount.incrementAndGet();
-            if (current % 100 == 0 || current == totalFiles) {
-                scannedFiles = current;
-                publish("Collecting: " + file.getName() + " (" + current + "/" + totalFiles + ")");
-            }
-        } catch (Exception e) {
-            System.err.println("Error processing file metadata: " + file.getAbsolutePath() + " - " + e.getMessage());
+        int current = processedCount.incrementAndGet();
+        if (current % 100 == 0 || current == totalFiles) {
+            scannedFiles = current;
+            publish("Collecting: " + file.getName() + " (" + current + "/" + totalFiles + ")");
         }
     }
 
@@ -141,11 +122,9 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
                 if (hash != null) {
                     BackupFile backupFile = new BackupFile(file, hash);
 
-                    if (seenHashes.contains(hash)) {
+                    if (!seenHashes.add(hash)) {
                         backupFile.setStatus(BackupFile.BackupStatus.DUPLICATE);
                         backupFile.setSelected(false);
-                    } else {
-                        seenHashes.add(hash);
                     }
 
                     foundFiles.add(backupFile);
@@ -172,8 +151,7 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
     private void publishTimingInfo(List<BackupFile> foundFiles, long startTime) {
         long totalTime = System.currentTimeMillis() - startTime;
         long totalBytes = foundFiles.stream().mapToLong(f -> f.getSourceFile().length()).sum();
-        double totalMB = totalBytes / (1024.0 * 1024.0);
-        double throughput = totalTime > 0 ? totalMB / (totalTime / 1000.0) : 0;
+        double throughput = totalTime > 0 ? (totalBytes / (1024.0 * 1024.0)) / (totalTime / 1000.0) : 0;
 
         String timingMessage = "Completed in " + FileUtilities.formatDuration(totalTime) +
                               " (" + String.format("%.1f", throughput) + " MB/s)";
@@ -183,20 +161,14 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
         }
     }
 
-
     private void waitForFutures(List<Future<?>> futures) {
         for (Future<?> future : futures) {
             if (isCancelled()) break;
             try {
                 future.get();
-            } catch (CancellationException | InterruptedException e) {
-                // Ignoruj anulowane zadania
-            } catch (ExecutionException e) {
-                System.err.println("Error in metadata processing: " + e.getMessage());
-            }
+            } catch (CancellationException | InterruptedException | ExecutionException ignored) {}
         }
     }
-
 
     @Override
     protected void process(List<String> chunks) {
@@ -208,10 +180,7 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
     @Override
     protected void done() {
         try {
-            List<BackupFile> result = get();
-            if (progressCallback != null) {
-                progressCallback.scanCompleted(result);
-            }
+            if (progressCallback != null) progressCallback.scanCompleted(get());
         } catch (CancellationException e) {
             if (progressCallback != null) progressCallback.scanFailed("Scan was cancelled");
         } catch (Exception e) {

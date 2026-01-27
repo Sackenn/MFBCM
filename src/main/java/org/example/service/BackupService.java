@@ -1,7 +1,7 @@
 package org.example.service;
 
-import org.example.model.BackupFile;
 import org.example.model.BackupConfiguration;
+import org.example.model.BackupFile;
 import org.example.util.FileUtilities;
 
 import javax.swing.*;
@@ -34,13 +34,10 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
 
     public BackupService(List<BackupFile> filesToBackup, BackupConfiguration configuration,
                          BackupProgressCallback progressCallback) {
-        Objects.requireNonNull(filesToBackup, "filesToBackup cannot be null");
-        Objects.requireNonNull(configuration, "configuration cannot be null");
-        Objects.requireNonNull(configuration.getMasterBackupLocation(), "Master backup location must be set");
-
-        this.filesToBackup = filesToBackup;
-        this.configuration = configuration;
+        this.filesToBackup = Objects.requireNonNull(filesToBackup);
+        this.configuration = Objects.requireNonNull(configuration);
         this.progressCallback = progressCallback;
+        Objects.requireNonNull(configuration.getMasterBackupLocation(), "Master backup location must be set");
     }
 
     @Override
@@ -52,7 +49,7 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
         for (BackupFile backupFile : filesToBackup) {
             if (isCancelled()) {
                 successCountBeforeCancellation.set(successCount);
-                throw new CancellationException("Backup cancelled by user");
+                throw new CancellationException("Backup cancelled");
             }
 
             if (shouldSkipFile(backupFile)) {
@@ -64,9 +61,7 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
 
             try {
                 File destinationFile = calculateDestinationPath(backupFile);
-                boolean success = copyFile(backupFile.getSourceFile(), destinationFile);
-
-                if (success) {
+                if (copyFile(backupFile.getSourceFile(), destinationFile)) {
                     backupFile.setStatus(BackupFile.BackupStatus.COMPLETED);
                     successCount++;
                     processedBytes += backupFile.getSize();
@@ -99,21 +94,16 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
     }
 
     private void notifyFileCompleted(BackupFile file, boolean success, String error) {
-        if (progressCallback != null) {
-            progressCallback.fileCompleted(file, success, error);
-        }
+        if (progressCallback != null) progressCallback.fileCompleted(file, success, error);
     }
 
     private void notifyBackupCompleted(int successCount, int errorCount) {
-        if (progressCallback != null) {
-            progressCallback.backupCompleted(successCount, errorCount);
-        }
+        if (progressCallback != null) progressCallback.backupCompleted(successCount, errorCount);
     }
 
     private long calculateTotalBytes() {
         return filesToBackup.stream()
-                .filter(BackupFile::isSelected)
-                .filter(f -> f.getStatus() != BackupFile.BackupStatus.DUPLICATE)
+                .filter(f -> f.isSelected() && f.getStatus() != BackupFile.BackupStatus.DUPLICATE)
                 .mapToLong(BackupFile::getSize)
                 .sum();
     }
@@ -126,10 +116,9 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
 
         if (configuration.isCreateDateFolders()) {
             LocalDateTime fileDate = backupFile.getLastModified();
-            String yearFolder = String.valueOf(fileDate.getYear());
-            String monthFolder = String.format("%02d", fileDate.getMonthValue());
+            File dateFolder = new File(masterLocation,
+                fileDate.getYear() + File.separator + String.format("%02d", fileDate.getMonthValue()));
 
-            File dateFolder = new File(masterLocation, yearFolder + File.separator + monthFolder);
             if (!dateFolder.exists() && !dateFolder.mkdirs()) {
                 throw new IOException("Failed to create date folder: " + dateFolder.getAbsolutePath());
             }
@@ -166,20 +155,12 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
     }
 
     private File resolveNameConflict(File destination) {
-        if (!destination.exists()) {
-            return destination;
-        }
+        if (!destination.exists()) return destination;
 
         String fileName = destination.getName();
-        String baseName, extension = "";
-
         int lastDot = fileName.lastIndexOf('.');
-        if (lastDot > 0) {
-            baseName = fileName.substring(0, lastDot);
-            extension = fileName.substring(lastDot);
-        } else {
-            baseName = fileName;
-        }
+        String baseName = lastDot > 0 ? fileName.substring(0, lastDot) : fileName;
+        String extension = lastDot > 0 ? fileName.substring(lastDot) : "";
 
         int counter = 1;
         File newDestination;

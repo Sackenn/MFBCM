@@ -6,6 +6,7 @@ import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 
 /**
  * Serwis usuwania plików z obsługą postępu i anulowania.
@@ -22,8 +23,7 @@ public class FileDeleteService extends SwingWorker<FileDeleteService.DeleteResul
     }
 
     public FileDeleteService(List<BackupFile> filesToDelete, DeleteProgressCallback callback) {
-        Objects.requireNonNull(filesToDelete, "filesToDelete cannot be null");
-        this.filesToDelete = new ArrayList<>(filesToDelete);
+        this.filesToDelete = new ArrayList<>(Objects.requireNonNull(filesToDelete));
         this.callback = callback;
     }
 
@@ -32,11 +32,7 @@ public class FileDeleteService extends SwingWorker<FileDeleteService.DeleteResul
         DeleteResult result = new DeleteResult();
         int total = filesToDelete.size();
 
-        for (int i = 0; i < filesToDelete.size(); i++) {
-            if (isCancelled()) {
-                break;
-            }
-
+        for (int i = 0; i < total && !isCancelled(); i++) {
             BackupFile file = filesToDelete.get(i);
             publish(file.getFileName());
 
@@ -69,18 +65,11 @@ public class FileDeleteService extends SwingWorker<FileDeleteService.DeleteResul
     @Override
     protected void done() {
         try {
-            DeleteResult result = get();
-            if (callback != null) {
-                callback.deleteCompleted(result);
-            }
-        } catch (java.util.concurrent.CancellationException e) {
-            if (callback != null) {
-                callback.deleteFailed("Delete operation was cancelled");
-            }
+            if (callback != null) callback.deleteCompleted(get());
+        } catch (CancellationException e) {
+            if (callback != null) callback.deleteFailed("Delete operation was cancelled");
         } catch (Exception e) {
-            if (callback != null) {
-                callback.deleteFailed("Delete failed: " + e.getMessage());
-            }
+            if (callback != null) callback.deleteFailed("Delete failed: " + e.getMessage());
         }
     }
 
@@ -91,13 +80,8 @@ public class FileDeleteService extends SwingWorker<FileDeleteService.DeleteResul
         private final List<BackupFile> deletedFiles = new ArrayList<>();
         private final List<FailedFile> failedFiles = new ArrayList<>();
 
-        public void addDeleted(BackupFile file) {
-            deletedFiles.add(file);
-        }
-
-        public void addFailed(BackupFile file, String reason) {
-            failedFiles.add(new FailedFile(file, reason));
-        }
+        public void addDeleted(BackupFile file) { deletedFiles.add(file); }
+        public void addFailed(BackupFile file, String reason) { failedFiles.add(new FailedFile(file, reason)); }
 
         public List<BackupFile> getDeletedFiles() { return deletedFiles; }
         public List<FailedFile> getFailedFiles() { return failedFiles; }
@@ -110,9 +94,6 @@ public class FileDeleteService extends SwingWorker<FileDeleteService.DeleteResul
         }
     }
 
-    /**
-     * Informacja o pliku, którego nie udało się usunąć.
-     */
     public record FailedFile(BackupFile file, String reason) {}
 }
 

@@ -21,10 +21,8 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
 
     private final BackupConfiguration configuration;
     private final SyncProgressCallback progressCallback;
-    private long totalBytes = 0;
-    private long processedBytes = 0;
-    private int totalFiles = 0;
-    private int processedFiles = 0;
+    private long totalBytes, processedBytes;
+    private int totalFiles, processedFiles;
 
     public interface SyncProgressCallback {
         void updateProgress(int current, int total, String currentFile, long bytesProcessed, long totalBytes);
@@ -33,14 +31,12 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
     }
 
     public SyncService(BackupConfiguration configuration, SyncProgressCallback progressCallback) {
-        Objects.requireNonNull(configuration, "configuration cannot be null");
+        this.configuration = Objects.requireNonNull(configuration);
+        this.progressCallback = progressCallback;
         Objects.requireNonNull(configuration.getMasterBackupLocation(), "Master backup location must be set");
         if (configuration.getSyncLocations().isEmpty()) {
             throw new IllegalArgumentException("At least one sync location must be set");
         }
-
-        this.configuration = configuration;
-        this.progressCallback = progressCallback;
     }
 
     @Override
@@ -52,9 +48,7 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
         calculateTotalSize(masterLocation);
 
         for (File syncLocation : configuration.getSyncLocations()) {
-            if (isCancelled()) {
-                throw new CancellationException("Sync cancelled by user");
-            }
+            if (isCancelled()) throw new CancellationException("Sync cancelled");
 
             try {
                 publish(new SyncProgress(processedFiles, totalFiles,
@@ -88,18 +82,10 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
     }
 
     private void syncDirectory(File source, File target, String locationName) throws IOException {
-        Path sourcePath = source.toPath();
-        Path targetPath = target.toPath();
-
         if (!target.exists() && !target.mkdirs()) {
             throw new IOException("Failed to create target directory: " + target.getAbsolutePath());
         }
-
-        copyFilesToTarget(sourcePath, targetPath, locationName);
-
-        if (!isCancelled()) {
-            cleanupDeletedFiles(sourcePath, targetPath);
-        }
+        copyFilesToTarget(source.toPath(), target.toPath(), locationName);
     }
 
     private void copyFilesToTarget(Path sourcePath, Path targetPath, String locationName) throws IOException {
@@ -110,9 +96,7 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
                 if (isSystemDirectory(dir)) return FileVisitResult.SKIP_SUBTREE;
 
                 Path targetDir = targetPath.resolve(sourcePath.relativize(dir));
-                if (!Files.exists(targetDir)) {
-                    Files.createDirectories(targetDir);
-                }
+                if (!Files.exists(targetDir)) Files.createDirectories(targetDir);
                 return FileVisitResult.CONTINUE;
             }
 
@@ -121,8 +105,7 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
                 if (isCancelled()) return FileVisitResult.TERMINATE;
                 if (isSystemFile(file)) return FileVisitResult.CONTINUE;
 
-                Path targetFile = targetPath.resolve(sourcePath.relativize(file));
-                copyIfNeeded(file, targetFile, attrs);
+                copyIfNeeded(file, targetPath.resolve(sourcePath.relativize(file)), attrs);
 
                 processedFiles++;
                 processedBytes += attrs.size();
@@ -142,44 +125,10 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
             BasicFileAttributes targetAttrs = Files.readAttributes(target, BasicFileAttributes.class);
             if (sourceAttrs.size() == targetAttrs.size() &&
                 sourceAttrs.lastModifiedTime().equals(targetAttrs.lastModifiedTime())) {
-                return; // Plik jest identyczny
+                return;
             }
         }
         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
-    }
-
-    private void cleanupDeletedFiles(Path source, Path target) throws IOException {
-        if (!Files.exists(target)) return;
-
-        Files.walkFileTree(target, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (isCancelled()) return FileVisitResult.TERMINATE;
-                if (isSystemFile(file)) return FileVisitResult.CONTINUE;
-
-                Path sourceFile = source.resolve(target.relativize(file));
-                if (!Files.exists(sourceFile)) {
-                    Files.delete(file);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                if (isCancelled()) return FileVisitResult.TERMINATE;
-                if (isSystemDirectory(dir)) return FileVisitResult.CONTINUE;
-
-                Path sourceDir = source.resolve(target.relativize(dir));
-                if (!Files.exists(sourceDir) && !dir.equals(target)) {
-                    try {
-                        Files.delete(dir);
-                    } catch (DirectoryNotEmptyException e) {
-                        // Katalog nie jest pusty, pomiń
-                    }
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
     }
 
     private boolean isSystemFile(Path file) {
@@ -195,17 +144,14 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
         if (progressCallback != null && !chunks.isEmpty()) {
             SyncProgress last = chunks.getLast();
             progressCallback.updateProgress(last.current(), last.total(),
-                    last.currentFile(), last.bytesProcessed(), last.totalBytes());
+                last.currentFile(), last.bytesProcessed(), last.totalBytes());
         }
     }
 
     @Override
     protected void done() {
         try {
-            SyncResult result = get();
-            if (progressCallback != null) {
-                progressCallback.syncCompleted(result);
-            }
+            if (progressCallback != null) progressCallback.syncCompleted(get());
         } catch (CancellationException e) {
             if (progressCallback != null) progressCallback.syncFailed("Sync was cancelled");
         } catch (Exception e) {

@@ -1,7 +1,10 @@
 package org.example.service;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Wynik operacji synchronizacji zawierający informacje o udanych i nieudanych lokalizacjach.
@@ -14,8 +17,8 @@ public class SyncResult {
     public void addSuccessfulLocation(File location) { successfulLocations.add(location); }
     public void addFailedLocation(File location, String error) { failedLocations.put(location, error); }
 
-    public List<File> getSuccessfulLocations() { return new ArrayList<>(successfulLocations); }
-    public Map<File, String> getFailedLocations() { return new HashMap<>(failedLocations); }
+    public List<File> getSuccessfulLocations() { return List.copyOf(successfulLocations); }
+    public Map<File, String> getFailedLocations() { return Map.copyOf(failedLocations); }
 
     public int getSuccessCount() { return successfulLocations.size(); }
     public int getFailureCount() { return failedLocations.size(); }

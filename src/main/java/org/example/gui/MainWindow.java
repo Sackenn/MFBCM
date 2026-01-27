@@ -2,15 +2,7 @@ package org.example.gui;
 
 import org.example.model.BackupConfiguration;
 import org.example.model.BackupFile;
-import org.example.service.FileScanner;
-import org.example.service.BackupService;
-import org.example.service.HashStorageService;
-import org.example.service.DuplicateDetectionService;
-import org.example.service.DuplicateAnalysisResult;
-import org.example.service.ConfigurationPersistenceService;
-import org.example.service.SyncService;
-import org.example.service.SyncResult;
-import org.example.service.FileDeleteService;
+import org.example.service.*;
 import org.example.util.MultiThreadedHashCalculator;
 
 import javax.swing.*;

@@ -1,15 +1,11 @@
 package org.example;
 
-import org.example.gui.MainWindow;
 import com.formdev.flatlaf.FlatDarkLaf;
+import org.example.gui.MainWindow;
 
 import javax.swing.*;
 import java.awt.Insets;
 
-/**
- * Główna klasa aplikacji Multimedia File Backup Manager.
- * Inicjalizuje wygląd interfejsu i uruchamia główne okno.
- */
 public class Main {
 
     public static void main(String[] args) {
