@@ -63,6 +63,7 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
                 File destinationFile = calculateDestinationPath(backupFile);
                 if (copyFile(backupFile.getSourceFile(), destinationFile)) {
                     backupFile.setStatus(BackupFile.BackupStatus.COMPLETED);
+                    backupFile.setSelected(false);
                     successCount++;
                     processedBytes += backupFile.getSize();
                     notifyFileCompleted(backupFile, true, null);
