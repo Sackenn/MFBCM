@@ -22,7 +22,7 @@ public class BackupFile {
         "mpg", "mpeg", "m2v", "mts", "ts", "vob", "asf", "rm", "rmvb"
     );
 
-    public enum BackupStatus { PENDING, IN_PROGRESS, COMPLETED, ERROR, DUPLICATE }
+    public enum BackupStatus { PENDING, IN_PROGRESS, COMPLETED, ERROR, DUPLICATE, UNIQUE }
 
     private final File sourceFile;
     private final String hash;

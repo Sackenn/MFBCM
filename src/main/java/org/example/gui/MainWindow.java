@@ -603,10 +603,10 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         scanButton.setEnabled(canScan);
         scanButton.setText(scanInProgress ? "Cancel Scan" : "Scan for Files");
 
-        boolean hasFiles = fileListPanel.getFileCount() > 0;
+        boolean hasSelectedFiles = !fileListPanel.getSelectedFiles().isEmpty();
         boolean backupInProgress = isBackupInProgress();
 
-        backupButton.setEnabled(hasFiles && !scanInProgress && canScan);
+        backupButton.setEnabled(hasSelectedFiles && !scanInProgress && canScan);
         backupButton.setText(backupInProgress ? "Cancel Backup" : "Start Backup");
 
         if (!viewDuplicatesButton.isEnabled() && lastDuplicateResult != null &&
@@ -621,11 +621,10 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         boolean syncInProgress = isSyncInProgress();
         boolean canSync = configuration.getMasterBackupLocation() != null &&
                          !configuration.getSyncLocations().isEmpty() &&
-                         !scanInProgress && !backupInProgress && !syncInProgress;
-        syncButton.setEnabled(canSync);
+                         !scanInProgress && !backupInProgress;
+        syncButton.setEnabled(canSync || syncInProgress);
         syncButton.setText(syncInProgress ? "Cancel Sync" : "Sync Locations");
 
-        boolean hasSelectedFiles = !fileListPanel.getSelectedFiles().isEmpty();
         deleteSelectedButton.setEnabled(hasSelectedFiles && !scanInProgress && !backupInProgress && !syncInProgress);
     }
 

@@ -261,6 +261,7 @@ public class DuplicateDetectionService extends SwingWorker<DuplicateAnalysisResu
             } else if (file.getStatus() == BackupFile.BackupStatus.DUPLICATE) {
                 duplicatesInSource.add(file);
             } else {
+                file.setStatus(BackupFile.BackupStatus.UNIQUE);
                 newFiles.add(file);
             }
         }

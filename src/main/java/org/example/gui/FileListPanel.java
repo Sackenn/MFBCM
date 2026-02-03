@@ -138,7 +138,7 @@ public class FileListPanel extends JPanel {
     public void setFiles(List<BackupFile> files) {
         tableModel.setFiles(files);
         updateSummary();
-        selectAllCheckBox.setSelected(true);
+        selectAllCheckBox.setSelected(false);
     }
 
     public void clearFiles() {
