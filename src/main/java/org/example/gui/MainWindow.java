@@ -3,43 +3,49 @@ package org.example.gui;
 import org.example.model.BackupConfiguration;
 import org.example.model.BackupFile;
 import org.example.service.*;
+import org.example.util.LanguageManager;
 import org.example.util.MultiThreadedHashCalculator;
 
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.example.gui.UIConstants.*;
+import static org.example.util.LanguageManager.get;
 
 /**
- * Główne okno aplikacji do zarządzania kopiami zapasowymi plików multimedialnych.
+ * Glowne okno aplikacji do zarzadzania kopiami zapasowymi plikow multimedialnych.
  */
 public class MainWindow extends JFrame implements FileScanner.ScanProgressCallback,
                                                  BackupService.BackupProgressCallback,
                                                  DuplicateDetectionService.DuplicateDetectionCallback,
                                                  SyncService.SyncProgressCallback,
-                                                 FileDeleteService.DeleteProgressCallback {
+                                                 FileDeleteService.DeleteProgressCallback,
+                                                 LanguageManager.LanguageChangeListener {
 
     private final BackupConfiguration configuration;
     private HashStorageService hashStorageService;
     private final ConfigurationPersistenceService configPersistenceService;
 
     // Komponenty UI - Konfiguracja
-    private JLabel masterLocationLabel;
+    private JLabel masterLocationLabel, masterLocationTitle;
     private JButton browseMasterButton;
     private JList<File> sourceDirectoriesList;
     private DefaultListModel<File> sourceListModel;
     private JButton addSourceButton, removeSourceButton;
+    private JLabel sourceDirectoriesTitle;
     private JList<File> syncLocationsList;
     private DefaultListModel<File> syncListModel;
     private JButton addSyncButton, removeSyncButton;
+    private JLabel syncLocationsTitle;
 
     // Komponenty UI - Akcje
     private JButton scanButton, backupButton, viewDuplicatesButton, rescanMasterButton, syncButton, deleteSelectedButton;
 
-    // Komponenty UI - Panel plików i postęp
+    // Komponenty UI - Panel plikow i postep
     private FileListPanel fileListPanel;
     private JProgressBar scanProgressBar, backupProgressBar, syncProgressBar;
     private JLabel statusLabel;
@@ -48,6 +54,11 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     private JCheckBox includeSubdirectoriesCheckBox, createDateFoldersCheckBox;
     private JCheckBox enableDuplicateDetectionCheckBox, skipHashingCheckBox;
     private JSpinner threadCountSpinner;
+    private JLabel hashThreadsLabel;
+    private JComboBox<String> languageComboBox;
+
+    // Komponenty UI - Panele z tytulami
+    private JPanel configPanel, progressPanel;
 
     // Serwisy i stan
     private FileScanner currentScanner;
@@ -61,6 +72,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     public MainWindow() {
         this.configPersistenceService = new ConfigurationPersistenceService();
         this.configuration = configPersistenceService.loadConfiguration();
+        LanguageManager.addLanguageChangeListener(this);
         initializeUI();
         setupEventHandlers();
         loadSavedConfiguration();
@@ -68,7 +80,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private void initializeUI() {
-        setTitle("Multimedia File Backup Manager");
+        setTitle(get("app.title"));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
 
@@ -95,38 +107,39 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private JPanel createConfigurationPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(createTitledBorder("Configuration"));
+        configPanel = new JPanel(new GridBagLayout());
+        configPanel.setBorder(createTitledBorder(get("config.title")));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = CELL_INSETS;
 
-        // Lokalizacja głównej kopii zapasowej
-        addMasterLocationRow(panel, gbc);
+        // Lokalizacja glownej kopii zapasowej
+        addMasterLocationRow(configPanel, gbc);
 
-        // Katalogi źródłowe
-        addSourceDirectoriesRow(panel, gbc);
+        // Katalogi zrodlowe
+        addSourceDirectoriesRow(configPanel, gbc);
 
         // Lokalizacje synchronizacji
-        addSyncLocationsRow(panel, gbc);
+        addSyncLocationsRow(configPanel, gbc);
 
         // Opcje
-        addOptionsRow(panel, gbc);
+        addOptionsRow(configPanel, gbc);
 
         // Przyciski akcji
-        addActionButtonsRow(panel, gbc);
+        addActionButtonsRow(configPanel, gbc);
 
-        return panel;
+        return configPanel;
     }
 
     private void addMasterLocationRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0; gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.WEST;
-        panel.add(createLabel("Master Backup Location:"), gbc);
+        masterLocationTitle = createLabel(get("config.masterLocation"));
+        panel.add(masterLocationTitle, gbc);
 
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
-        masterLocationLabel = createLabel("No location selected", FONT_REGULAR, TEXT_SECONDARY);
+        masterLocationLabel = createLabel(get("config.noLocationSelected"), FONT_REGULAR, TEXT_SECONDARY);
         masterLocationLabel.setOpaque(true);
         masterLocationLabel.setBackground(BG_INPUT);
         masterLocationLabel.setBorder(createInputBorder());
@@ -135,14 +148,15 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.gridx = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
-        browseMasterButton = createButton("Browse...", BUTTON_SMALL);
+        browseMasterButton = createButton(get("button.browse"), BUTTON_SMALL);
         panel.add(browseMasterButton, gbc);
     }
 
     private void addSourceDirectoriesRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0; gbc.gridy = 1;
         gbc.anchor = GridBagConstraints.NORTHWEST;
-        panel.add(createLabel("Source Directories:"), gbc);
+        sourceDirectoriesTitle = createLabel(get("config.sourceDirectories"));
+        panel.add(sourceDirectoriesTitle, gbc);
 
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.BOTH;
@@ -159,8 +173,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.weighty = 0;
         JPanel buttonPanel = new JPanel(new GridLayout(2, 1, 8, 8));
         buttonPanel.setOpaque(false);
-        addSourceButton = createButton("Add...", BUTTON_SMALL);
-        removeSourceButton = createButton("Remove", BUTTON_SMALL);
+        addSourceButton = createButton(get("button.add"), BUTTON_SMALL);
+        removeSourceButton = createButton(get("button.remove"), BUTTON_SMALL);
         buttonPanel.add(addSourceButton);
         buttonPanel.add(removeSourceButton);
         panel.add(buttonPanel, gbc);
@@ -170,9 +184,9 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.gridx = 0; gbc.gridy = 2;
         gbc.anchor = GridBagConstraints.NORTHWEST;
         gbc.weighty = 1.0;
-        JLabel syncLabel = createLabel("Sync Locations:");
-        syncLabel.setToolTipText("Create copies of master folder in these locations");
-        panel.add(syncLabel, gbc);
+        syncLocationsTitle = createLabel(get("config.syncLocations"));
+        syncLocationsTitle.setToolTipText(get("config.syncLocationsTooltip"));
+        panel.add(syncLocationsTitle, gbc);
 
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.BOTH;
@@ -188,8 +202,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.weighty = 0;
         JPanel buttonPanel = new JPanel(new GridLayout(2, 1, 8, 8));
         buttonPanel.setOpaque(false);
-        addSyncButton = createButton("Add...", BUTTON_SMALL);
-        removeSyncButton = createButton("Remove", BUTTON_SMALL);
+        addSyncButton = createButton(get("button.add"), BUTTON_SMALL);
+        removeSyncButton = createButton(get("button.remove"), BUTTON_SMALL);
         buttonPanel.add(addSyncButton);
         buttonPanel.add(removeSyncButton);
         panel.add(buttonPanel, gbc);
@@ -201,27 +215,53 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weighty = 0;
 
-        JPanel optionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 5));
+        // Uzyj WrapLayout wycentrowany dla lepszego skalowania przy zmianie jezyka
+        JPanel optionsPanel = new JPanel(new WrapLayout(FlowLayout.CENTER, 15, 5));
         optionsPanel.setOpaque(false);
 
-        includeSubdirectoriesCheckBox = createCheckBox("Include subdirectories", true);
-        createDateFoldersCheckBox = createCheckBox("Create date-based folders", false);
-        enableDuplicateDetectionCheckBox = createCheckBox("Detect duplicates with master folder", true);
-        skipHashingCheckBox = createCheckBox("Skip hashing (fast scan)", false);
-        skipHashingCheckBox.setToolTipText("<html>Skip hash calculation for faster scanning<br>Duplicates are detected by comparing file name and size</html>");
+        includeSubdirectoriesCheckBox = createCheckBox(get("option.includeSubdirectories"), true);
+        createDateFoldersCheckBox = createCheckBox(get("option.createDateFolders"), false);
+        enableDuplicateDetectionCheckBox = createCheckBox(get("option.detectDuplicates"), true);
+        skipHashingCheckBox = createCheckBox(get("option.skipHashing"), false);
+        skipHashingCheckBox.setToolTipText(get("option.skipHashingTooltip"));
 
         optionsPanel.add(includeSubdirectoriesCheckBox);
         optionsPanel.add(createDateFoldersCheckBox);
         optionsPanel.add(enableDuplicateDetectionCheckBox);
         optionsPanel.add(skipHashingCheckBox);
 
-        optionsPanel.add(createLabel("Hash threads:"));
+        // Grupuj hash threads label i spinner razem
+        JPanel hashThreadsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        hashThreadsPanel.setOpaque(false);
+        hashThreadsLabel = createLabel(get("option.hashThreads"));
+        hashThreadsPanel.add(hashThreadsLabel);
         threadCountSpinner = new JSpinner(new SpinnerNumberModel(
             Runtime.getRuntime().availableProcessors(), 1,
             Runtime.getRuntime().availableProcessors() * 2, 1));
         threadCountSpinner.setFont(FONT_REGULAR);
         threadCountSpinner.setPreferredSize(SPINNER_SIZE);
-        optionsPanel.add(threadCountSpinner);
+        hashThreadsPanel.add(threadCountSpinner);
+        optionsPanel.add(hashThreadsPanel);
+
+        // Selektor jezyka - grupuj label i combo razem
+        JPanel langPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        langPanel.setOpaque(false);
+        JLabel langLabel = createLabel(get("app.language") + ":");
+        langPanel.add(langLabel);
+        languageComboBox = new JComboBox<>();
+        for (String code : LanguageManager.getAvailableLanguageCodes()) {
+            languageComboBox.addItem(LanguageManager.getLanguageDisplayName(code));
+        }
+        languageComboBox.setSelectedIndex(LanguageManager.getAvailableLanguageCodes()
+            .indexOf(LanguageManager.getCurrentLanguageCode()));
+        languageComboBox.setFont(FONT_REGULAR);
+        languageComboBox.addActionListener(_ -> {
+            int index = languageComboBox.getSelectedIndex();
+            String code = LanguageManager.getAvailableLanguageCodes().get(index);
+            LanguageManager.setLanguage(code);
+        });
+        langPanel.add(languageComboBox);
+        optionsPanel.add(langPanel);
 
         panel.add(optionsPanel, gbc);
     }
@@ -230,18 +270,19 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         gbc.gridy = 4;
         gbc.insets = new Insets(6, 8, 4, 8);
 
-        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
+        // Uzyj WrapLayout dla lepszego skalowania przy zmianie jezyka
+        JPanel actionPanel = new JPanel(new WrapLayout(FlowLayout.CENTER, 12, 5));
         actionPanel.setOpaque(false);
 
-        scanButton = createButton("Scan for Files");
-        backupButton = createButton("Start Backup");
-        viewDuplicatesButton = createButton("View Duplicates");
+        scanButton = createButton(get("button.scanFiles"));
+        backupButton = createButton(get("button.startBackup"));
+        viewDuplicatesButton = createButton(get("button.viewDuplicates"));
         viewDuplicatesButton.setEnabled(false);
-        rescanMasterButton = createButton("Rescan Master");
+        rescanMasterButton = createButton(get("button.rescanMaster"));
         rescanMasterButton.setEnabled(false);
-        syncButton = createButton("Sync Locations");
+        syncButton = createButton(get("button.syncLocations"));
         syncButton.setEnabled(false);
-        deleteSelectedButton = createButton("Delete Selected");
+        deleteSelectedButton = createButton(get("button.deleteSelected"));
         deleteSelectedButton.setEnabled(false);
 
         actionPanel.add(scanButton);
@@ -261,13 +302,13 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         fileListPanel.setSelectionChangeListener(this::updateButtonStates);
         panel.add(fileListPanel, BorderLayout.CENTER);
 
-        // Paski postępu
-        JPanel progressPanel = new JPanel(new GridLayout(3, 1, 0, 10));
-        progressPanel.setBorder(createTitledBorder("Progress"));
+        // Paski postepu
+        progressPanel = new JPanel(new GridLayout(3, 1, 0, 10));
+        progressPanel.setBorder(createTitledBorder(get("progress.title")));
 
-        scanProgressBar = createProgressBar("Ready to scan");
-        backupProgressBar = createProgressBar("Ready to backup");
-        syncProgressBar = createProgressBar("Ready to sync");
+        scanProgressBar = createProgressBar(get("progress.readyToScan"));
+        backupProgressBar = createProgressBar(get("progress.readyToBackup"));
+        syncProgressBar = createProgressBar(get("progress.readyToSync"));
 
         progressPanel.add(scanProgressBar);
         progressPanel.add(backupProgressBar);
@@ -282,7 +323,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         panel.setBackground(BG_PRIMARY);
         panel.setBorder(createStatusBorder());
 
-        statusLabel = createLabel("Ready", FONT_REGULAR, TEXT_SECONDARY);
+        statusLabel = createLabel(get("status.ready"), FONT_REGULAR, TEXT_SECONDARY);
         panel.add(statusLabel, BorderLayout.WEST);
 
         return panel;
@@ -1096,10 +1137,92 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         };
     }
 
+    // ====== OBSLUGA ZMIANY JEZYKA ======
+
+    @Override
+    public void onLanguageChanged(Locale newLocale) {
+        SwingUtilities.invokeLater(this::updateUITexts);
+    }
+
+    private void updateUITexts() {
+        // Tytul okna
+        setTitle(get("app.title"));
+
+        // Panel konfiguracji
+        configPanel.setBorder(createTitledBorder(get("config.title")));
+        masterLocationTitle.setText(get("config.masterLocation"));
+        if (configuration.getMasterBackupLocation() == null) {
+            masterLocationLabel.setText(get("config.noLocationSelected"));
+        }
+        sourceDirectoriesTitle.setText(get("config.sourceDirectories"));
+        syncLocationsTitle.setText(get("config.syncLocations"));
+        syncLocationsTitle.setToolTipText(get("config.syncLocationsTooltip"));
+
+        // Przyciski nawigacji
+        browseMasterButton.setText(get("button.browse"));
+        addSourceButton.setText(get("button.add"));
+        removeSourceButton.setText(get("button.remove"));
+        addSyncButton.setText(get("button.add"));
+        removeSyncButton.setText(get("button.remove"));
+
+        // Opcje
+        includeSubdirectoriesCheckBox.setText(get("option.includeSubdirectories"));
+        createDateFoldersCheckBox.setText(get("option.createDateFolders"));
+        enableDuplicateDetectionCheckBox.setText(get("option.detectDuplicates"));
+        skipHashingCheckBox.setText(get("option.skipHashing"));
+        skipHashingCheckBox.setToolTipText(get("option.skipHashingTooltip"));
+        hashThreadsLabel.setText(get("option.hashThreads"));
+
+        // Przyciski akcji - aktualizuj tylko jezeli nie sa w trakcie operacji
+        if (!isScanInProgress()) {
+            scanButton.setText(get("button.scanFiles"));
+        }
+        if (!isBackupInProgress()) {
+            backupButton.setText(get("button.startBackup"));
+        }
+        viewDuplicatesButton.setText(get("button.viewDuplicates"));
+        rescanMasterButton.setText(get("button.rescanMaster"));
+        if (!isSyncInProgress()) {
+            syncButton.setText(get("button.syncLocations"));
+        }
+        if (!isDeleteInProgress()) {
+            deleteSelectedButton.setText(get("button.deleteSelected"));
+        }
+
+        // Panel postepu
+        progressPanel.setBorder(createTitledBorder(get("progress.title")));
+
+        // Aktualizuj FileListPanel
+        fileListPanel.updateLanguage();
+
+        // Wymus ponowne obliczenie layoutu wszystkich paneli
+        configPanel.revalidate();
+        progressPanel.revalidate();
+
+        // Odswiez cale okno
+        getContentPane().revalidate();
+        getContentPane().repaint();
+
+        // Dostosuj rozmiar okna do nowej zawartosci
+        SwingUtilities.invokeLater(() -> {
+            Dimension minSize = getMinimumSize();
+            pack();
+            Dimension packedSize = getSize();
+
+            // Upewnij sie ze okno nie jest mniejsze niz minimum
+            int newWidth = Math.max(packedSize.width, minSize.width);
+            int newHeight = Math.max(packedSize.height, minSize.height);
+            setSize(newWidth, newHeight);
+
+            // Jesli okno wyszlo poza ekran, wycentruj je
+            setLocationRelativeTo(null);
+        });
+    }
 
     @Override
     protected void processWindowEvent(java.awt.event.WindowEvent e) {
         if (e.getID() == java.awt.event.WindowEvent.WINDOW_CLOSING) {
+            LanguageManager.removeLanguageChangeListener(this);
             saveConfiguration();
         }
         super.processWindowEvent(e);

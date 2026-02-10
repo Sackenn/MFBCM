@@ -1,6 +1,7 @@
 package org.example.gui;
 
 import org.example.model.BackupFile;
+import org.example.util.LanguageManager;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -14,10 +15,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.example.gui.UIConstants.*;
+import static org.example.util.LanguageManager.get;
 
 
 /**
- * Panel wyświetlający listę plików do kopii zapasowej w formie tabeli.
+ * Panel wyswietlajacy liste plikow do kopii zapasowej w formie tabeli.
  */
 public class FileListPanel extends JPanel {
 
@@ -26,11 +28,12 @@ public class FileListPanel extends JPanel {
     private final JLabel summaryLabel;
     private JCheckBox selectAllCheckBox;
     private JComboBox<String> filterComboBox;
+    private JLabel filterLabel;
     private Runnable selectionChangeListener;
 
     public FileListPanel() {
         setLayout(new BorderLayout(5, 5));
-        setBorder(createTitledBorder("Found Files"));
+        setBorder(createTitledBorder(get("fileList.title")));
 
         tableModel = new FileTableModel();
         fileTable = new JTable(tableModel);
@@ -43,7 +46,7 @@ public class FileListPanel extends JPanel {
         scrollPane.getViewport().setBackground(BG_SECONDARY);
         add(scrollPane, BorderLayout.CENTER);
 
-        summaryLabel = createLabel("No files loaded", FONT_REGULAR, TEXT_SECONDARY);
+        summaryLabel = createLabel(get("fileList.noFilesLoaded"), FONT_REGULAR, TEXT_SECONDARY);
         JPanel summaryPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 8));
         summaryPanel.setBackground(BG_PRIMARY);
         summaryPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER_COLOR));
@@ -55,15 +58,22 @@ public class FileListPanel extends JPanel {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
         panel.setOpaque(false);
 
-        selectAllCheckBox = createCheckBox("Select All", false);
+        selectAllCheckBox = createCheckBox(get("fileList.selectAll"), false);
         selectAllCheckBox.addActionListener(_ -> {
             tableModel.setAllSelected(selectAllCheckBox.isSelected());
             updateSummary();
         });
         panel.add(selectAllCheckBox);
 
-        panel.add(createLabel("Filter:"));
-        filterComboBox = new JComboBox<>(new String[]{"All", "Images", "Videos", "Selected", "Duplicates"});
+        filterLabel = createLabel(get("fileList.filter"));
+        panel.add(filterLabel);
+        filterComboBox = new JComboBox<>(new String[]{
+            get("fileList.filterAll"),
+            get("fileList.filterImages"),
+            get("fileList.filterVideos"),
+            get("fileList.filterSelected"),
+            get("fileList.filterDuplicates")
+        });
         filterComboBox.setFont(FONT_REGULAR);
         filterComboBox.addActionListener(_ -> applyFilter());
         panel.add(filterComboBox);
@@ -175,8 +185,10 @@ public class FileListPanel extends JPanel {
     // ====== METODY PRYWATNE ======
 
     private void applyFilter() {
-        String filter = (String) filterComboBox.getSelectedItem();
-        tableModel.applyFilter(filter != null ? filter : "All");
+        int selectedIndex = filterComboBox.getSelectedIndex();
+        String[] filterKeys = {"All", "Images", "Videos", "Selected", "Duplicates"};
+        String filter = selectedIndex >= 0 && selectedIndex < filterKeys.length ? filterKeys[selectedIndex] : "All";
+        tableModel.applyFilter(filter);
         updateSummary();
     }
 
@@ -187,10 +199,35 @@ public class FileListPanel extends JPanel {
         long totalSize = tableModel.getAllFiles().stream().mapToLong(BackupFile::getSize).sum();
         long selectedSize = tableModel.getSelectedFiles().stream().mapToLong(BackupFile::getSize).sum();
 
-        String sizeText = formatSize(selectedSize) + " of " + formatSize(totalSize);
-        summaryLabel.setText(String.format("Showing %d files | Selected: %d (%s)", visibleFiles, selectedFiles, sizeText));
+        String sizeText = formatSize(selectedSize) + " / " + formatSize(totalSize);
+        summaryLabel.setText(get("fileList.summary", visibleFiles, selectedFiles, sizeText));
 
         notifySelectionChanged();
+    }
+
+    /**
+     * Aktualizuje teksty UI po zmianie jezyka.
+     */
+    public void updateLanguage() {
+        setBorder(createTitledBorder(get("fileList.title")));
+        selectAllCheckBox.setText(get("fileList.selectAll"));
+        filterLabel.setText(get("fileList.filter"));
+
+        // Aktualizuj opcje filtra
+        int selectedIndex = filterComboBox.getSelectedIndex();
+        filterComboBox.removeAllItems();
+        filterComboBox.addItem(get("fileList.filterAll"));
+        filterComboBox.addItem(get("fileList.filterImages"));
+        filterComboBox.addItem(get("fileList.filterVideos"));
+        filterComboBox.addItem(get("fileList.filterSelected"));
+        filterComboBox.addItem(get("fileList.filterDuplicates"));
+        filterComboBox.setSelectedIndex(selectedIndex >= 0 ? selectedIndex : 0);
+
+        // Aktualizuj naglowki kolumn
+        tableModel.updateColumnNames();
+        setupTable();
+
+        updateSummary();
     }
 
     private String formatSize(long size) {
@@ -238,18 +275,35 @@ public class FileListPanel extends JPanel {
     // ====== MODEL TABELI ======
 
     private static class FileTableModel extends AbstractTableModel {
-        private static final String[] COLUMN_NAMES = {"", "Name", "Path", "Size", "Date Modified", "Type", "Status"};
+        private String[] columnNames = getLocalizedColumnNames();
         private final List<BackupFile> filteredFiles = new ArrayList<>();
         private List<BackupFile> allFiles = new ArrayList<>();
+
+        private static String[] getLocalizedColumnNames() {
+            return new String[]{
+                get("column.select"),
+                get("column.fileName"),
+                get("column.path"),
+                get("column.size"),
+                get("column.date"),
+                get("column.type"),
+                get("column.status")
+            };
+        }
+
+        public void updateColumnNames() {
+            columnNames = getLocalizedColumnNames();
+            fireTableStructureChanged();
+        }
 
         @Override
         public int getRowCount() { return filteredFiles.size(); }
 
         @Override
-        public int getColumnCount() { return COLUMN_NAMES.length; }
+        public int getColumnCount() { return columnNames.length; }
 
         @Override
-        public String getColumnName(int column) { return COLUMN_NAMES[column]; }
+        public String getColumnName(int column) { return columnNames[column]; }
 
         @Override
         public Class<?> getColumnClass(int columnIndex) {
@@ -272,7 +326,7 @@ public class FileListPanel extends JPanel {
                 case 2 -> file.getPath();
                 case 3 -> file.getFormattedSize();
                 case 4 -> file.getFormattedDate();
-                case 5 -> file.isVideo() ? "Video" : "Image";
+                case 5 -> file.isVideo() ? get("type.video") : get("type.image");
                 case 6 -> file.getStatus().toString();
                 default -> null;
             };
