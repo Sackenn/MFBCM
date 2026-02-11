@@ -9,13 +9,6 @@ import java.awt.*;
  */
 public class WrapLayout extends FlowLayout {
 
-    public WrapLayout() {
-        super();
-    }
-
-    public WrapLayout(int align) {
-        super(align);
-    }
 
     public WrapLayout(int align, int hgap, int vgap) {
         super(align, hgap, vgap);
@@ -23,89 +16,91 @@ public class WrapLayout extends FlowLayout {
 
     @Override
     public Dimension preferredLayoutSize(Container target) {
-        return layoutSize(target, true);
+        return calculateLayoutSize(target, true);
     }
 
     @Override
     public Dimension minimumLayoutSize(Container target) {
-        Dimension minimum = layoutSize(target, false);
+        Dimension minimum = calculateLayoutSize(target, false);
         minimum.width -= (getHgap() + 1);
         return minimum;
     }
 
-    private Dimension layoutSize(Container target, boolean preferred) {
+    private Dimension calculateLayoutSize(Container target, boolean usePreferredSize) {
         synchronized (target.getTreeLock()) {
-            Container container = target;
-
-            while (container.getSize().width == 0 && container.getParent() != null) {
-                container = container.getParent();
-            }
-
-            int targetWidth = container.getSize().width;
-
-            if (targetWidth == 0) {
-                targetWidth = Integer.MAX_VALUE;
-            }
-
-            int hgap = getHgap();
-            int vgap = getVgap();
-            Insets insets = target.getInsets();
-            int horizontalInsetsAndGap = insets.left + insets.right + (hgap * 2);
-            int maxWidth = targetWidth - horizontalInsetsAndGap;
-
-            Dimension dim = new Dimension(0, 0);
-            int rowWidth = 0;
-            int rowHeight = 0;
-
-            int nmembers = target.getComponentCount();
-
-            for (int i = 0; i < nmembers; i++) {
-                Component m = target.getComponent(i);
-
-                if (m.isVisible()) {
-                    Dimension d = preferred ? m.getPreferredSize() : m.getMinimumSize();
-
-                    // Jesli komponent nie miesci sie w wierszu, przejdz do nastepnego
-                    if (rowWidth + d.width > maxWidth) {
-                        addRow(dim, rowWidth, rowHeight);
-                        rowWidth = 0;
-                        rowHeight = 0;
-                    }
-
-                    // Dodaj szerokosc komponentu do wiersza
-                    if (rowWidth != 0) {
-                        rowWidth += hgap;
-                    }
-
-                    rowWidth += d.width;
-                    rowHeight = Math.max(rowHeight, d.height);
-                }
-            }
-
-            addRow(dim, rowWidth, rowHeight);
-
-            dim.width += horizontalInsetsAndGap;
-            dim.height += insets.top + insets.bottom + vgap * 2;
-
-            // Przy pierwszym ukladzie, gdy kontener ma rozmiar 0,
-            // dodaj troche miejsca na zawijanie
-            Container scrollPane = SwingUtilities.getAncestorOfClass(javax.swing.JScrollPane.class, target);
-
-            if (scrollPane != null && target.isValid()) {
-                dim.width -= (hgap + 1);
-            }
-
-            return dim;
+            int maxWidth = calculateMaxWidth(target);
+            Dimension dim = calculateComponentsDimension(target, maxWidth, usePreferredSize);
+            return adjustForInsets(target, dim);
         }
     }
 
-    private void addRow(Dimension dim, int rowWidth, int rowHeight) {
-        dim.width = Math.max(dim.width, rowWidth);
+    private int calculateMaxWidth(Container target) {
+        Container container = findParentWithWidth(target);
+        int targetWidth = container.getSize().width;
+        if (targetWidth == 0) {
+            return Integer.MAX_VALUE;
+        }
+        Insets insets = target.getInsets();
+        return targetWidth - insets.left - insets.right - (getHgap() * 2);
+    }
 
+    private Container findParentWithWidth(Container target) {
+        Container container = target;
+        while (container.getSize().width == 0 && container.getParent() != null) {
+            container = container.getParent();
+        }
+        return container;
+    }
+
+    private Dimension calculateComponentsDimension(Container target, int maxWidth, boolean usePreferredSize) {
+        Dimension dim = new Dimension(0, 0);
+        int rowWidth = 0;
+        int rowHeight = 0;
+
+        for (int i = 0; i < target.getComponentCount(); i++) {
+            Component component = target.getComponent(i);
+            if (!component.isVisible()) continue;
+
+            Dimension componentSize = usePreferredSize
+                ? component.getPreferredSize()
+                : component.getMinimumSize();
+
+            // Jesli komponent nie miesci sie w wierszu, przejdz do nastepnego
+            if (rowWidth + componentSize.width > maxWidth && rowWidth > 0) {
+                addRowToDimension(dim, rowWidth, rowHeight);
+                rowWidth = 0;
+                rowHeight = 0;
+            }
+
+            // Dodaj szerokosc komponentu do wiersza
+            if (rowWidth > 0) {
+                rowWidth += getHgap();
+            }
+            rowWidth += componentSize.width;
+            rowHeight = Math.max(rowHeight, componentSize.height);
+        }
+
+        addRowToDimension(dim, rowWidth, rowHeight);
+        return dim;
+    }
+
+    private void addRowToDimension(Dimension dim, int rowWidth, int rowHeight) {
+        dim.width = Math.max(dim.width, rowWidth);
         if (dim.height > 0) {
             dim.height += getVgap();
         }
-
         dim.height += rowHeight;
+    }
+
+    private Dimension adjustForInsets(Container target, Dimension dim) {
+        Insets insets = target.getInsets();
+        dim.width += insets.left + insets.right + (getHgap() * 2);
+        dim.height += insets.top + insets.bottom + (getVgap() * 2);
+
+        // Przy ukladzie w JScrollPane, dostosuj szerokosc
+        if (SwingUtilities.getAncestorOfClass(JScrollPane.class, target) != null && target.isValid()) {
+            dim.width -= (getHgap() + 1);
+        }
+        return dim;
     }
 }
