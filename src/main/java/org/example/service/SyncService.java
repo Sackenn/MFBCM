@@ -86,6 +86,7 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
             throw new IOException("Failed to create target directory: " + target.getAbsolutePath());
         }
         copyFilesToTarget(source.toPath(), target.toPath(), locationName);
+        deleteOrphanedFiles(source.toPath(), target.toPath(), locationName);
     }
 
     private void copyFilesToTarget(Path sourcePath, Path targetPath, String locationName) throws IOException {
@@ -137,6 +138,63 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
 
     private boolean isSystemDirectory(Path dir) {
         return dir.getFileName().toString().equals(TEMP_DIR_NAME);
+    }
+
+    private void deleteOrphanedFiles(Path masterPath, Path syncPath, String locationName) throws IOException {
+        if (!Files.exists(syncPath)) return;
+
+        Files.walkFileTree(syncPath, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (isCancelled()) return FileVisitResult.TERMINATE;
+                if (isSystemFile(file)) return FileVisitResult.CONTINUE;
+
+                Path relativePath = syncPath.relativize(file);
+                Path masterFile = masterPath.resolve(relativePath);
+
+                if (!Files.exists(masterFile)) {
+                    Files.delete(file);
+                    publish(new SyncProgress(processedFiles, totalFiles,
+                        locationName + ": Usunięto " + file.getFileName(), processedBytes, totalBytes));
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                if (isSystemDirectory(dir)) return FileVisitResult.SKIP_SUBTREE;
+                return FileVisitResult.CONTINUE;
+            }
+        });
+
+
+        Files.walkFileTree(syncPath, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                if (isCancelled()) return FileVisitResult.TERMINATE;
+                if (dir.equals(syncPath)) return FileVisitResult.CONTINUE; // Nie usuwaj katalogu głównego sync
+                if (isSystemDirectory(dir)) return FileVisitResult.CONTINUE;
+
+                Path relativePath = syncPath.relativize(dir);
+                Path masterDir = masterPath.resolve(relativePath);
+
+                if (!Files.exists(masterDir) || isDirectoryEmpty(dir)) {
+                    try {
+                        Files.delete(dir);
+                        publish(new SyncProgress(processedFiles, totalFiles,
+                            locationName + ": Usunięto katalog " + dir.getFileName(), processedBytes, totalBytes));
+                    } catch (DirectoryNotEmptyException ignored) {
+                    }
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private boolean isDirectoryEmpty(Path dir) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
+            return !stream.iterator().hasNext();
+        }
     }
 
     @Override
