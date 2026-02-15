@@ -1,7 +1,7 @@
 package org.example.service;
 
 import org.example.model.BackupConfiguration;
-import org.example.model.SyncProgress;
+import org.example.model.OperationProgress;
 import org.example.model.SyncResult;
 
 import javax.swing.*;
@@ -16,7 +16,7 @@ import java.util.concurrent.CancellationException;
 /**
  * Serwis synchronizacji folderu głównego do lokalizacji synchronizacji.
  */
-public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
+public class SyncService extends SwingWorker<SyncResult, OperationProgress> {
 
     private static final String HASH_FILE_NAME = ".mfbcm_hashes.json";
     private static final String TEMP_DIR_NAME = ".mfbcm_temp";
@@ -46,14 +46,14 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
         SyncResult result = new SyncResult();
         File masterLocation = configuration.getMasterBackupLocation();
 
-        publish(new SyncProgress(0, 1, "Calculating total size...", 0, 0));
+        publish(new OperationProgress(0, 1, "Calculating total size...", 0, 0));
         calculateTotalSize(masterLocation);
 
         for (File syncLocation : configuration.getSyncLocations()) {
             if (isCancelled()) throw new CancellationException("Sync cancelled");
 
             try {
-                publish(new SyncProgress(processedFiles, totalFiles,
+                publish(new OperationProgress(processedFiles, totalFiles,
                     "Syncing to: " + syncLocation.getName(), processedBytes, totalBytes));
                 syncDirectory(masterLocation, syncLocation, syncLocation.getName());
                 result.addSuccessfulLocation(syncLocation);
@@ -114,7 +114,7 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
                 processedBytes += attrs.size();
 
                 if (processedFiles % 10 == 0 || attrs.size() > 10_000_000) {
-                    publish(new SyncProgress(processedFiles, totalFiles,
+                    publish(new OperationProgress(processedFiles, totalFiles,
                         locationName + ": " + file.getFileName(), processedBytes, totalBytes));
                 }
 
@@ -156,7 +156,7 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
 
                 if (!Files.exists(masterFile)) {
                     Files.delete(file);
-                    publish(new SyncProgress(processedFiles, totalFiles,
+                    publish(new OperationProgress(processedFiles, totalFiles,
                         locationName + ": Usunięto " + file.getFileName(), processedBytes, totalBytes));
                 }
                 return FileVisitResult.CONTINUE;
@@ -183,7 +183,7 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
                 if (!Files.exists(masterDir) || isDirectoryEmpty(dir)) {
                     try {
                         Files.delete(dir);
-                        publish(new SyncProgress(processedFiles, totalFiles,
+                        publish(new OperationProgress(processedFiles, totalFiles,
                             locationName + ": Usunięto katalog " + dir.getFileName(), processedBytes, totalBytes));
                     } catch (DirectoryNotEmptyException ignored) {
                     }
@@ -200,11 +200,11 @@ public class SyncService extends SwingWorker<SyncResult, SyncProgress> {
     }
 
     @Override
-    protected void process(List<SyncProgress> chunks) {
+    protected void process(List<OperationProgress> chunks) {
         if (progressCallback != null && !chunks.isEmpty()) {
-            SyncProgress last = chunks.getLast();
-            progressCallback.updateProgress(last.current(), last.total(),
-                last.currentFile(), last.bytesProcessed(), last.totalBytes());
+            OperationProgress last = chunks.getLast();
+            progressCallback.updateProgress(last.currentFile(), last.totalFiles(),
+                last.fileName(), last.bytesProcessed(), last.totalBytes());
         }
     }
 

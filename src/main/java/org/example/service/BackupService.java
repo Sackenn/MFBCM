@@ -2,7 +2,7 @@ package org.example.service;
 
 import org.example.model.BackupConfiguration;
 import org.example.model.BackupFile;
-import org.example.model.BackupProgress;
+import org.example.model.OperationProgress;
 import org.example.util.FileUtilities;
 
 import javax.swing.*;
@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Serwis wykonujący operacje kopii zapasowej.
  */
-public class BackupService extends SwingWorker<Boolean, BackupProgress> {
+public class BackupService extends SwingWorker<Boolean, OperationProgress> {
 
     private final List<BackupFile> filesToBackup;
     private final BackupConfiguration configuration;
@@ -78,7 +78,7 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
             }
 
             processedFiles++;
-            publish(new BackupProgress(processedFiles, filesToBackup.size(),
+            publish(new OperationProgress(processedFiles, filesToBackup.size(),
                     backupFile.getFileName(), processedBytes, totalBytes));
         }
 
@@ -174,9 +174,9 @@ public class BackupService extends SwingWorker<Boolean, BackupProgress> {
     }
 
     @Override
-    protected void process(List<BackupProgress> chunks) {
+    protected void process(List<OperationProgress> chunks) {
         if (progressCallback != null && !chunks.isEmpty()) {
-            BackupProgress progress = chunks.getLast();
+            OperationProgress progress = chunks.getLast();
             progressCallback.updateProgress(progress.currentFile(), progress.totalFiles(),
                     progress.fileName(), progress.bytesProcessed(), progress.totalBytes());
         }
