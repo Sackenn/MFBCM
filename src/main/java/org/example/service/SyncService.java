@@ -1,6 +1,8 @@
 package org.example.service;
 
 import org.example.model.BackupConfiguration;
+import org.example.model.SyncProgress;
+import org.example.model.SyncResult;
 
 import javax.swing.*;
 import java.io.File;

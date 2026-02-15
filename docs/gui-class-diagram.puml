@@ -1,0 +1,280 @@
+@startuml gui_class_diagram
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+
+skinparam class {
+    BackgroundColor #F8F9FA
+    BorderColor #343A40
+    BorderThickness 1.5
+    FontColor #000000
+    FontSize 12
+    HeaderBackgroundColor #E3F2FD
+}
+
+skinparam arrow {
+    Color #495057
+    Thickness 1.5
+}
+
+title Diagram Klas - Pakiet GUI (org.example.gui)
+
+' ===== KLASY GŁÓWNE =====
+
+class MainWindow <<JFrame>> {
+    - configuration: BackupConfiguration
+    - hashStorageService: HashStorageService
+    - configPersistenceService: ConfigurationPersistenceService
+    --
+    - masterLocationLabel: JLabel
+    - sourceDirectoriesList: JList<File>
+    - syncLocationsList: JList<File>
+    - scanButton: JButton
+    - backupButton: JButton
+    - syncButton: JButton
+    - deleteSelectedButton: JButton
+    - fileListPanel: FileListPanel
+    - scanProgressBar: JProgressBar
+    - backupProgressBar: JProgressBar
+    - syncProgressBar: JProgressBar
+    - statusLabel: JLabel
+    --
+    + MainWindow()
+    - initializeUI(): void
+    - setupEventHandlers(): void
+    - createConfigurationPanel(): JPanel
+    - createCenterPanel(): JPanel
+    - startScan(): void
+    - startBackup(): void
+    - startSync(): void
+    - deleteSelectedFiles(): void
+    + onLanguageChanged(locale: Locale): void
+}
+
+class FileListPanel <<JPanel>> {
+    - tableModel: FileTableModel
+    - fileTable: JTable
+    - summaryLabel: JLabel
+    - selectAllCheckBox: JCheckBox
+    - filterComboBox: JComboBox<String>
+    - selectionChangeListener: Runnable
+    --
+    + FileListPanel()
+    + setFiles(files: List<BackupFile>): void
+    + clearFiles(): void
+    + getAllFiles(): List<BackupFile>
+    + getSelectedFiles(): List<BackupFile>
+    + getFileCount(): int
+    + updateFileStatus(file: BackupFile): void
+    + setSelectionChangeListener(listener: Runnable): void
+    + updateSummary(): void
+    + updateLanguage(): void
+    - setupTable(): void
+    - applyFilter(): void
+}
+
+class DuplicateViewerWindow <<JDialog>> {
+    - analysisResult: DuplicateAnalysisResult
+    - tableModel: DuplicateTableModel
+    - duplicateTable: JTable
+    --
+    + DuplicateViewerWindow(parent: JFrame, result: DuplicateAnalysisResult)
+    - initializeUI(): void
+    - populateData(): void
+    - createMasterDuplicatesPanel(): JPanel
+    - createSourceDuplicatesPanel(): JPanel
+    - createSummaryPanel(): JPanel
+    - setupDuplicateTable(table: JTable, model: DuplicateTableModel): void
+}
+
+class ImagePreviewTooltip <<utility>> {
+    - {static} MAX_PREVIEW_SIZE: int = 300
+    - {static} MAX_CACHE_SIZE: int = 100
+    - {static} IMAGE_EXTENSIONS: Set<String>
+    - {static} thumbnailCache: Map<String, ImageIcon>
+    - {static} previewWindow: JWindow
+    - {static} imageLabel: JLabel
+    - {static} infoLabel: JLabel
+    - {static} currentFilePath: String
+    --
+    + {static} showPreview(file: BackupFile, parent: Component, location: Point): void
+    + {static} hidePreview(): void
+    - {static} createPreviewWindow(): void
+    - {static} positionWindow(parent: Component, location: Point): void
+    - {static} getThumbnail(file: File): ImageIcon
+}
+
+class UIConstants <<utility>> {
+    + {static} BG_PRIMARY: Color
+    + {static} BG_SECONDARY: Color
+    + {static} BG_INPUT: Color
+    + {static} BORDER_COLOR: Color
+    + {static} TEXT_PRIMARY: Color
+    + {static} TEXT_SECONDARY: Color
+    + {static} SELECTION_BG: Color
+    + {static} SELECTION_FG: Color
+    + {static} STATUS_SUCCESS: Color
+    + {static} STATUS_ERROR: Color
+    + {static} FONT_REGULAR: Font
+    + {static} FONT_BOLD: Font
+    + {static} FONT_TITLE: Font
+    + {static} BUTTON_SIZE: Dimension
+    + {static} CELL_INSETS: Insets
+    --
+    + {static} createButton(text: String): JButton
+    + {static} createButton(text: String, size: Dimension): JButton
+    + {static} createLabel(text: String): JLabel
+    + {static} createLabel(text: String, font: Font, color: Color): JLabel
+    + {static} createCheckBox(text: String, selected: boolean): JCheckBox
+    + {static} createProgressBar(initialText: String): JProgressBar
+    + {static} createTitledBorder(title: String): Border
+    + {static} createScrollPane(view: Component): JScrollPane
+    + {static} styleList(list: JList<T>): void
+    + {static} styleTable(table: JTable): void
+}
+
+class WrapLayout <<FlowLayout>> {
+    + WrapLayout(align: int, hgap: int, vgap: int)
+    + preferredLayoutSize(target: Container): Dimension
+    + minimumLayoutSize(target: Container): Dimension
+    - calculateLayoutSize(target: Container, usePreferredSize: boolean): Dimension
+    - calculateMaxWidth(target: Container): int
+    - calculateComponentsDimension(target: Container, maxWidth: int, usePreferredSize: boolean): Dimension
+    - addRowToDimension(dim: Dimension, rowWidth: int, rowHeight: int): void
+}
+
+' ===== KLASY WEWNĘTRZNE (MODELE TABEL) =====
+
+class FileTableModel <<AbstractTableModel>> {
+    - allFiles: List<BackupFile>
+    - filteredFiles: List<BackupFile>
+    - columnNames: String[]
+    --
+    + setFiles(files: List<BackupFile>): void
+    + clearFiles(): void
+    + getAllFiles(): List<BackupFile>
+    + getSelectedFiles(): List<BackupFile>
+    + getFileAt(row: int): BackupFile
+    + toggleSelection(row: int): void
+    + setAllSelected(selected: boolean): void
+    + applyFilter(filter: String): void
+    + updateColumnNames(): void
+    + updateFileStatus(file: BackupFile): void
+}
+
+class DuplicateTableModel <<AbstractTableModel>> {
+    - duplicateFiles: List<BackupFile>
+    --
+    + setDuplicateFiles(files: List<BackupFile>): void
+    + getFileAt(row: int): BackupFile
+}
+
+class SourceDuplicateTableModel <<AbstractTableModel>> {
+    - duplicateGroups: Map<String, List<BackupFile>>
+    - flatList: List<BackupFile>
+    --
+    + setDuplicateGroups(groups: Map<String, List<BackupFile>>): void
+    + getFileAt(row: int): BackupFile
+}
+
+' ===== RENDERERY (KLASY WEWNĘTRZNE) =====
+
+class CheckBoxRenderer <<TableCellRenderer>> {
+    + getTableCellRendererComponent(...): Component
+}
+
+class CheckBoxEditor <<DefaultCellEditor>> {
+    + getTableCellEditorComponent(...): Component
+}
+
+class StatusRenderer <<DefaultTableCellRenderer>> {
+    + getTableCellRendererComponent(...): Component
+}
+
+' ===== INTERFEJSY (Z SERWISÓW) =====
+
+interface "FileScanner.ScanProgressCallback" as ScanCallback {
+    + onScanProgress(processedFiles: int, totalFiles: int): void
+    + onScanComplete(files: List<BackupFile>): void
+}
+
+interface "BackupService.BackupProgressCallback" as BackupCallback {
+    + onBackupProgress(progress: BackupProgress): void
+    + onBackupComplete(result: boolean): void
+}
+
+interface "DuplicateDetectionService.DuplicateDetectionCallback" as DuplicateCallback {
+    + onDuplicateDetectionProgress(current: int, total: int): void
+    + onDuplicateDetectionComplete(result: DuplicateAnalysisResult): void
+}
+
+interface "SyncService.SyncProgressCallback" as SyncCallback {
+    + onSyncProgress(progress: SyncProgress): void
+    + onSyncComplete(result: SyncResult): void
+}
+
+interface "FileDeleteService.DeleteProgressCallback" as DeleteCallback {
+    + onDeleteProgress(current: int, total: int): void
+    + onDeleteComplete(deletedCount: int): void
+}
+
+interface "LanguageManager.LanguageChangeListener" as LangListener {
+    + onLanguageChanged(locale: Locale): void
+}
+
+' ===== RELACJE =====
+
+' MainWindow implementuje interfejsy callback
+MainWindow .u.|> ScanCallback
+MainWindow .u.|> BackupCallback
+MainWindow .u.|> DuplicateCallback
+MainWindow .u.|> SyncCallback
+MainWindow .u.|> DeleteCallback
+MainWindow .u.|> LangListener
+
+' MainWindow zawiera FileListPanel
+MainWindow *-d-> FileListPanel : zawiera
+
+' MainWindow tworzy DuplicateViewerWindow
+MainWindow ..> DuplicateViewerWindow : tworzy
+
+' FileListPanel zawiera FileTableModel
+FileListPanel *-d-> FileTableModel : zawiera
+
+' FileListPanel używa ImagePreviewTooltip
+FileListPanel ..> ImagePreviewTooltip : używa
+
+' FileListPanel zawiera renderery
+FileListPanel *-d-> CheckBoxRenderer : zawiera
+FileListPanel *-d-> CheckBoxEditor : zawiera
+FileListPanel *-d-> StatusRenderer : zawiera
+
+' DuplicateViewerWindow zawiera modele tabel
+DuplicateViewerWindow *-d-> DuplicateTableModel : zawiera
+DuplicateViewerWindow *-d-> SourceDuplicateTableModel : zawiera
+
+' DuplicateViewerWindow używa ImagePreviewTooltip
+DuplicateViewerWindow ..> ImagePreviewTooltip : używa
+
+' Wszystkie klasy GUI używają UIConstants
+MainWindow ..> UIConstants : używa
+FileListPanel ..> UIConstants : używa
+DuplicateViewerWindow ..> UIConstants : używa
+ImagePreviewTooltip ..> UIConstants : używa
+
+' MainWindow może używać WrapLayout
+MainWindow ..> WrapLayout : używa
+
+' ===== LEGENDA =====
+
+legend right
+    |= Symbol |= Znaczenie |
+    | <&arrow-thick-right> | Kompozycja (zawiera) |
+    | <&arrow-right> | Zależność (używa) |
+    | <&caret-top> | Implementacja |
+    | <<utility>> | Klasa narzędziowa |
+endlegend
+
+@enduml
+

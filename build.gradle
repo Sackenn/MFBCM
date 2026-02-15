@@ -16,11 +16,6 @@ repositories {
 }
 
 dependencies {
-    // Apache Commons IO for file utilities (updated from 2.11.0)
-    implementation 'commons-io:commons-io:2.18.0'
-
-    // Apache Commons Codec for file hashing (updated from 1.15)
-    implementation 'commons-codec:commons-codec:1.17.1'
 
     // xxHash3 for ultra-fast file hashing (zero-allocation)
     implementation 'net.openhft:zero-allocation-hashing:0.27ea1'

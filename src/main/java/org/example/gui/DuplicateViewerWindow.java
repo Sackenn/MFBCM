@@ -1,8 +1,8 @@
 package org.example.gui;
 
 import org.example.model.BackupFile;
-import org.example.service.DuplicateAnalysisResult;
-import org.example.service.DuplicatePair;
+import org.example.model.DuplicateAnalysisResult;
+import org.example.model.DuplicatePair;
 import org.example.util.FileUtilities;
 
 import javax.swing.*;

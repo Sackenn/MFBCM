@@ -1,0 +1,194 @@
+@startuml MFBCM_Layered_Architecture
+
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam packageStyle frame
+skinparam linetype ortho
+skinparam shadowing false
+
+title Architektura Warstwowa Systemu MFBCM\n(Multimedia File Backup & Copy Manager)
+
+' ===== WARSTWA PREZENTACJI (GUI) =====
+package "Warstwa Prezentacji (GUI)" as GUI #E1F5FE {
+    component "**MainWindow**\n//Główne okno aplikacji//" as MainWindow #81D4FA {
+        component "Konfiguracja źródeł" as ConfigPanel
+        component "Lista plików" as FileList
+        component "Pasek postępu" as ProgressBar
+        component "Panel opcji" as OptionsPanel
+    }
+
+    component "**FileListPanel**\n//Panel listy plików z\nwyborem i sortowaniem//" as FileListPanel #81D4FA
+
+    component "**DuplicateViewerWindow**\n//Okno przeglądania\nduplikatów//" as DuplicateViewer #81D4FA
+
+    component "**ImagePreviewTooltip**\n//Podgląd obrazów\nw tooltipie//" as ImagePreview #81D4FA
+
+    component "**UIConstants**\n//Stałe UI//" as UIConstants #B3E5FC
+
+    component "**WrapLayout**\n//Layout Manager//" as WrapLayout #B3E5FC
+}
+
+' ===== WARSTWA LOGIKI BIZNESOWEJ (SERWISY) =====
+package "Warstwa Logiki Biznesowej (Serwisy)" as Services #E8F5E9 {
+
+    component "**FileScanner**\n//Skanowanie katalogów//" as FileScanner #81C784 {
+        note right: SwingWorker\n+ wielowątkowość
+    }
+
+    component "**BackupService**\n//Tworzenie kopii\nzapasowych//" as BackupService #81C784 {
+        note right: SwingWorker\n+ raportowanie postępu
+    }
+
+    component "**DuplicateDetectionService**\n//Wykrywanie\nduplikatów//" as DuplicateService #81C784 {
+        note right: SwingWorker\n+ analiza hashów
+    }
+
+    component "**SyncService**\n//Synchronizacja\nfolderów//" as SyncService #81C784 {
+        note right: SwingWorker\n+ kopiowanie NIO.2
+    }
+
+    component "**FileDeleteService**\n//Usuwanie plików//" as DeleteService #81C784
+
+    component "**HashStorageService**\n//Przechowywanie\nhashów (JSON)//" as HashStorage #A5D6A7 {
+        note right: Jackson ObjectMapper
+    }
+
+    component "**ConfigurationPersistenceService**\n//Zapis/odczyt\nkonfiguracji//" as ConfigService #A5D6A7
+}
+
+' ===== WARSTWA MODELU DANYCH =====
+package "Warstwa Modelu Danych" as Model #FFF3E0 {
+
+    component "**BackupConfiguration**\n//Konfiguracja aplikacji//" as BackupConfig #FFB74D {
+        component "masterBackupLocation" as MasterLoc
+        component "sourceDirectories" as SourceDirs
+        component "syncLocations" as SyncLocs
+        component "opcje (skipHashing, threads...)" as Options
+    }
+
+    component "**BackupFile**\n//Reprezentacja pliku\ndo backupu//" as BackupFile #FFB74D {
+        component "sourceFile: File" as SourceFile
+        component "hash: String" as Hash
+        component "status: BackupStatus" as Status
+        component "selected: boolean" as Selected
+    }
+
+    component "**DuplicateAnalysisResult**\n//Wynik analizy\nduplikatów//" as DuplicateResult #FFCC80
+
+    component "**DuplicatePair**\n//Para duplikatów//" as DuplicatePair #FFCC80
+
+    component "**SyncProgress**\n//Postęp synchronizacji//" as SyncProgress #FFCC80
+
+    component "**SyncResult**\n//Wynik synchronizacji//" as SyncResult #FFCC80
+
+    component "**BackupProgress**\n//Postęp backupu//" as BackupProgress #FFCC80
+}
+
+' ===== WARSTWA NARZĘDZI (UTILITY) =====
+package "Warstwa Narzędzi (Utility)" as Util #F3E5F5 {
+
+    component "**MultiThreadedHashCalculator**\n//Wielowątkowe obliczanie\nhashów xxHash3//" as HashCalculator #CE93D8 {
+        note right: ForkJoinPool\n+ próbkowanie chunków
+    }
+
+    component "**FileUtilities**\n//Operacje na plikach\n(formatowanie, MIME)//" as FileUtils #CE93D8
+
+    component "**LanguageManager**\n//Zarządzanie\ninternacjonalizacją (i18n)//" as LangManager #CE93D8 {
+        note right: ResourceBundle\nPL/EN
+    }
+}
+
+' ===== WARSTWA ZEWNĘTRZNA / INFRASTRUKTURA =====
+package "Infrastruktura / Zależności Zewnętrzne" as External #FFEBEE {
+
+    component "**Java NIO.2**\n//Operacje I/O//" as NIO #EF9A9A
+
+    component "**Swing / FlatLaf**\n//Framework GUI//" as Swing #EF9A9A
+
+    component "**Jackson**\n//Serializacja JSON//" as Jackson #EF9A9A
+
+    component "**xxHash3 (OpenHFT)**\n//Algorytm hashujący//" as xxHash #EF9A9A
+
+    component "**Commons IO**\n//Narzędzia plikowe//" as CommonsIO #EF9A9A
+
+    database "**System plików**" as FileSystem #FFCDD2
+}
+
+' ===== PUNKT WEJŚCIA =====
+component "**Main**\n//Punkt wejścia\naplikacji//" as Main #FFF59D
+
+' ===== RELACJE MIĘDZY WARSTWAMI =====
+
+' Main -> GUI
+Main --> MainWindow : uruchamia
+
+' GUI -> Serwisy
+MainWindow --> FileScanner : skanuje pliki
+MainWindow --> BackupService : wykonuje backup
+MainWindow --> DuplicateService : wykrywa duplikaty
+MainWindow --> SyncService : synchronizuje
+MainWindow --> DeleteService : usuwa pliki
+MainWindow --> ConfigService : zapisuje/odczytuje config
+
+FileListPanel --> BackupFile : wyświetla
+DuplicateViewer --> DuplicatePair : wyświetla
+DuplicateViewer --> ImagePreview : podgląd
+
+' GUI -> Model
+MainWindow --> BackupConfig : konfiguracja
+MainWindow --> DuplicateResult : wyniki
+
+' GUI -> Util
+MainWindow --> LangManager : tłumaczenia
+FileListPanel --> FileUtils : formatowanie
+
+' Serwisy -> Model
+FileScanner --> BackupFile : tworzy
+BackupService --> BackupFile : przetwarza
+BackupService --> BackupConfig : używa
+DuplicateService --> DuplicateResult : generuje
+DuplicateService --> BackupConfig : używa
+SyncService --> SyncResult : generuje
+SyncService --> BackupConfig : używa
+
+' Serwisy -> Util
+FileScanner --> HashCalculator : oblicza hashe
+DuplicateService --> HashCalculator : oblicza hashe
+HashStorage --> Jackson : serializacja
+
+' Serwisy -> Infrastruktura
+BackupService --> NIO : kopiuje pliki
+SyncService --> NIO : synchronizuje
+HashCalculator --> xxHash : hashuje
+FileUtils --> CommonsIO : operacje
+HashStorage --> FileSystem : zapis/odczyt
+ConfigService --> FileSystem : zapis/odczyt
+
+' GUI -> Infrastruktura
+MainWindow --> Swing : renderuje UI
+
+' ===== LEGENDA =====
+legend right
+    |= Kolor |= Warstwa |
+    | <#81D4FA> | Prezentacja (GUI) |
+    | <#81C784> | Logika Biznesowa (Serwisy) |
+    | <#FFB74D> | Model Danych |
+    | <#CE93D8> | Narzędzia (Utility) |
+    | <#EF9A9A> | Infrastruktura |
+endlegend
+
+note bottom of GUI
+    **Wzorce projektowe:**
+    - Observer (callback interfaces)
+    - SwingWorker (async operations)
+end note
+
+note bottom of Services
+    **Charakterystyka:**
+    - Asynchroniczność (SwingWorker)
+    - Wielowątkowość (ExecutorService)
+    - Wzorzec Strategy (różne serwisy)
+end note
+
+@enduml
+

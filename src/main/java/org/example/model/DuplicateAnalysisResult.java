@@ -1,6 +1,5 @@
-package org.example.service;
+package org.example.model;
 
-import org.example.model.BackupFile;
 import org.example.util.FileUtilities;
 
 import java.util.ArrayList;
@@ -67,3 +66,4 @@ public class DuplicateAnalysisResult {
         target.addAll(source);
     }
 }
+

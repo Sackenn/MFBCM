@@ -2,6 +2,7 @@ package org.example.service;
 
 import org.example.model.BackupConfiguration;
 import org.example.model.BackupFile;
+import org.example.model.BackupProgress;
 import org.example.util.FileUtilities;
 
 import javax.swing.*;

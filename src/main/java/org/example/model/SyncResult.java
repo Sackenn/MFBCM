@@ -1,4 +1,4 @@
-package org.example.service;
+package org.example.model;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -25,3 +25,4 @@ public class SyncResult {
 
     public boolean hasFailures() { return !failedLocations.isEmpty(); }
 }
+

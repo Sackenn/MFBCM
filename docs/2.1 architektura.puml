@@ -1,0 +1,61 @@
+@startuml architektura_warstwowa_pozioma
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam componentStyle uml2
+skinparam defaultTextAlignment center
+skinparam linetype polyline
+
+' Zwiększone odstępy poziome, aby tekst na strzałkach miał dużo miejsca
+skinparam ranksep 130
+skinparam nodesep 60
+
+skinparam component {
+    BackgroundColor #F8F9FA
+    BorderColor #343A40
+    BorderThickness 1.5
+    FontColor #000000
+    FontSize 13
+}
+
+skinparam arrow {
+    Color #495057
+    Thickness 1.5
+    FontSize 12
+    FontColor #000000
+}
+
+' --- PAKIETY UKŁADANE POZIOMO ---
+
+component "Warstwa Prezentacji\n(pakiet: btg.gui)" as GUI {
+    component "Pasywne Komponenty\nWidoku (Swing)" as View
+}
+
+component "Warstwa Logiki Biznesowej\n(pakiet: btg.service)" as Service {
+    component "Zarządzanie Asynchroniczne\n(SwingWorker)" as Async
+    component "Kluczowe Algorytmy\n(Deduplikacja, Sync, Backup)" as Logic
+
+    Async -down-> Logic : " Inicjuje obliczenia"
+}
+
+component "Warstwa Danych i Modelu\n(pakiet: btg.model)" as Model {
+    component "Obiekty Transferu\nDanych (DTO)" as DTO
+    component "Mechanizmy Persystencji\n(JSON, Properties)" as Persist
+
+    ' Ukryta relacja do ułożenia DTO idealnie nad Persist
+    DTO -down[hidden]-> Persist
+}
+
+' --- RELACJE MIĘDZY WARSTWAMI ---
+
+' Strzałki horyzontalne między widokiem a logiką
+View -right-> Async : " 1. Zleca wykonanie\noperacji w tle"
+Async -left.> View : " 2. Bezpieczna aktualizacja\nGUI (publish/process)"
+
+' Strzałki horyzontalne między logiką a danymi
+Logic -right.> DTO : " 3. Modyfikuje stan"
+Logic -right.> Persist : " 4. Wywołuje zapis"
+
+' Strzałka wertykalna wewnątrz warstwy danych
+Persist -up.> DTO : " 5. Serializuje\nz/do pliku"
+
+@enduml

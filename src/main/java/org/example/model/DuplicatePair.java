@@ -1,6 +1,5 @@
-package org.example.service;
+package org.example.model;
 
-import org.example.model.BackupFile;
 import java.io.File;
 
 /**
@@ -16,3 +15,4 @@ public record DuplicatePair(BackupFile sourceFile, File masterFile) {
     public BackupFile getSourceFile() { return sourceFile; }
     public File getMasterFile() { return masterFile; }
 }
+

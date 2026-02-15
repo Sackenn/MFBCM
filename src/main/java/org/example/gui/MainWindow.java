@@ -2,6 +2,8 @@ package org.example.gui;
 
 import org.example.model.BackupConfiguration;
 import org.example.model.BackupFile;
+import org.example.model.DuplicateAnalysisResult;
+import org.example.model.SyncResult;
 import org.example.service.*;
 import org.example.util.LanguageManager;
 import org.example.util.MultiThreadedHashCalculator;
