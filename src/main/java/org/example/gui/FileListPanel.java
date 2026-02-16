@@ -251,15 +251,17 @@ public class FileListPanel extends JPanel {
         }
     }
 
-    private static class StatusRenderer extends DefaultTableCellRenderer {
+    private class StatusRenderer extends DefaultTableCellRenderer {
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
                 boolean isSelected, boolean hasFocus, int row, int column) {
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             setFont(FONT_REGULAR);
 
-            if (value != null) {
-                Color statusColor = switch (BackupFile.BackupStatus.valueOf(value.toString())) {
+            // Pobierz oryginalny status z modelu zamiast parsować przetłumaczony tekst
+            BackupFile file = tableModel.getFileAt(row);
+            if (file != null) {
+                Color statusColor = switch (file.getStatus()) {
                     case COMPLETED -> STATUS_SUCCESS;
                     case ERROR -> STATUS_ERROR;
                     case IN_PROGRESS -> STATUS_PROGRESS;

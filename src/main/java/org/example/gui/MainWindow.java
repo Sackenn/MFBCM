@@ -454,7 +454,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
         fileListPanel.clearFiles();
         scanProgressBar.setValue(0);
-        scanProgressBar.setString("Starting scan...");
+        scanProgressBar.setString(get("progress.scanning"));
 
         if (enableDuplicateDetectionCheckBox.isSelected() && hashStorageService != null) {
             currentDuplicateService = new DuplicateDetectionService(configuration, hashStorageService, this);
@@ -590,8 +590,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         currentBackupService.cancel(true);
         currentBackupService = null;
         backupProgressBar.setValue(0);
-        backupProgressBar.setString("Backup cancelled");
-        statusLabel.setText("Backup cancelled by user");
+        backupProgressBar.setString(get("progress.backupCancelled"));
+        statusLabel.setText(get("status.backupCancelled"));
         updateButtonStates();
     }
 
@@ -599,8 +599,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         currentSyncService.cancel(true);
         currentSyncService = null;
         syncProgressBar.setValue(0);
-        syncProgressBar.setString("Sync cancelled");
-        statusLabel.setText("Sync cancelled by user");
+        syncProgressBar.setString(get("progress.syncCancelled"));
+        statusLabel.setText(get("status.syncCancelled"));
         updateButtonStates();
     }
 
@@ -608,9 +608,9 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         currentDeleteService.cancel(true);
         currentDeleteService = null;
         scanProgressBar.setValue(0);
-        scanProgressBar.setString("Delete cancelled");
-        statusLabel.setText("Delete cancelled by user");
-        deleteSelectedButton.setText("Delete Selected");
+        scanProgressBar.setString(get("progress.deleteCancelled"));
+        statusLabel.setText(get("status.deleteCancelled"));
+        deleteSelectedButton.setText(get("button.deleteSelected"));
         updateButtonStates();
     }
 
@@ -677,14 +677,13 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
             if (current >= total && currentFile.startsWith("Completed in ")) {
                 lastTimingInfo = currentFile;
-                String prefix = isDuplicateDetection ? "Duplicate detection " : "Scan ";
-                scanProgressBar.setString(prefix + currentFile);
+                scanProgressBar.setString(currentFile);
             } else if (isDuplicateDetection) {
-                scanProgressBar.setString("Detecting duplicates: " + currentFile);
-                statusLabel.setText("Analyzed " + current + " of " + total + " files for duplicates");
+                scanProgressBar.setString(get("progress.detectingDuplicates", currentFile));
+                statusLabel.setText(get("progress.analyzedFiles", current, total));
             } else {
-                scanProgressBar.setString("Scanning: " + currentFile);
-                statusLabel.setText("Scanned " + current + " of " + total + " files");
+                scanProgressBar.setString(get("progress.scanningFile", currentFile));
+                statusLabel.setText(get("progress.scannedFiles", current, total));
             }
         });
     }
@@ -694,10 +693,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         SwingUtilities.invokeLater(() -> {
             fileListPanel.setFiles(files);
             scanProgressBar.setValue(100);
-            String message = lastTimingInfo != null
-                ? "Scan " + lastTimingInfo + " - " + files.size() + " files found"
-                : "Scan completed - " + files.size() + " files found";
-            scanProgressBar.setString(message);
+            scanProgressBar.setString(get("progress.scanCompleted"));
             lastTimingInfo = null;
             statusLabel.setText(get("scan.foundFiles", files.size()));
             updateButtonStates();
@@ -721,16 +717,16 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             if (total > 0) {
                 int percentage = (current * 100) / total;
                 String bytesText = totalBytes > 0
-                    ? String.format(" (%.1f%% of data)", (bytesProcessed * 100.0) / totalBytes) : "";
+                    ? String.format(" (%.1f%%)", (bytesProcessed * 100.0) / totalBytes) : "";
 
                 if (isBackupInProgress()) {
                     backupProgressBar.setValue(percentage);
-                    backupProgressBar.setString("Backing up: " + currentFile);
-                    statusLabel.setText("Backed up " + current + " of " + total + " files" + bytesText);
+                    backupProgressBar.setString(get("progress.backingUp", currentFile));
+                    statusLabel.setText(get("progress.backedUpFiles", current, total) + bytesText);
                 } else if (isSyncInProgress()) {
                     syncProgressBar.setValue(percentage);
-                    syncProgressBar.setString("Syncing: " + currentFile);
-                    statusLabel.setText("Synced " + current + " of " + total + " files" + bytesText);
+                    syncProgressBar.setString(get("progress.syncing", currentFile));
+                    statusLabel.setText(get("progress.syncedFiles", current, total) + bytesText);
                 }
             }
         });
@@ -1158,6 +1154,22 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
         // Panel postepu
         progressPanel.setBorder(createTitledBorder(get("progress.title")));
+
+        // Aktualizuj teksty paskow postepu gdy nie sa w trakcie operacji
+        if (!isScanInProgress()) {
+            scanProgressBar.setString(get("progress.readyToScan"));
+        }
+        if (!isBackupInProgress()) {
+            backupProgressBar.setString(get("progress.readyToBackup"));
+        }
+        if (!isSyncInProgress()) {
+            syncProgressBar.setString(get("progress.readyToSync"));
+        }
+
+        // Aktualizuj status na dole
+        if (!isScanInProgress() && !isBackupInProgress() && !isSyncInProgress() && !isDeleteInProgress()) {
+            statusLabel.setText(get("status.ready"));
+        }
 
         // Aktualizuj FileListPanel
         fileListPanel.updateLanguage();

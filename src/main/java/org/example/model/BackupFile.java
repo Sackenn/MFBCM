@@ -29,7 +29,7 @@ public class BackupFile {
     private final long size;
     private final LocalDateTime lastModified;
     private boolean selected = true;
-    private BackupStatus status = BackupStatus.PENDING;
+    private BackupStatus status = BackupStatus.UNIQUE;
     private boolean existsInMaster = false;
 
     public BackupFile(File sourceFile, String hash) {
