@@ -5,8 +5,6 @@ import org.example.model.BackupFile;
 import org.example.model.DuplicateAnalysisResult;
 import org.example.model.SyncResult;
 import org.example.service.*;
-import org.example.util.LanguageManager;
-import org.example.util.MultiThreadedHashCalculator;
 
 import javax.swing.*;
 import java.awt.*;
@@ -16,7 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import static org.example.gui.UIConstants.*;
-import static org.example.util.LanguageManager.get;
+import static org.example.service.LanguageManager.get;
 
 /**
  * Glowne okno aplikacji do zarzadzania kopiami zapasowymi plikow multimedialnych.

@@ -1,6 +1,7 @@
-package org.example.util;
+package org.example.service;
 
 import net.openhft.hashing.LongHashFunction;
+import org.example.util.FileUtilities;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -270,3 +271,5 @@ public class MultiThreadedHashCalculator {
         void onProgress(int current, int total, String currentFile, int errors);
     }
 }
+
+

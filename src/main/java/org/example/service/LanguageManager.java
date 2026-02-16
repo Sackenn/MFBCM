@@ -1,4 +1,4 @@
-package org.example.util;
+package org.example.service;
 
 import java.text.MessageFormat;
 import java.util.*;
@@ -96,3 +96,4 @@ public class LanguageManager {
         }
     }
 }
+

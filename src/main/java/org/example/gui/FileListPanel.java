@@ -1,7 +1,7 @@
 package org.example.gui;
 
 import org.example.model.BackupFile;
-import org.example.util.LanguageManager;
+import org.example.service.LanguageManager;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.example.gui.UIConstants.*;
-import static org.example.util.LanguageManager.get;
+import static org.example.service.LanguageManager.get;
 
 
 /**
