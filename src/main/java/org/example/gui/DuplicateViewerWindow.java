@@ -3,6 +3,7 @@ package org.example.gui;
 import org.example.model.BackupFile;
 import org.example.model.DuplicateAnalysisResult;
 import org.example.model.DuplicatePair;
+import org.example.service.LanguageManager;
 import org.example.util.FileUtilities;
 
 import javax.swing.*;
@@ -17,6 +18,7 @@ import java.util.*;
 import java.util.List;
 
 import static org.example.gui.UIConstants.*;
+import static org.example.service.LanguageManager.get;
 
 /**
  * Okno dialogowe wyświetlające szczegółowy widok wykrytych duplikatów plików.
@@ -28,7 +30,7 @@ public class DuplicateViewerWindow extends JDialog {
     private JTable duplicateTable;
 
     public DuplicateViewerWindow(JFrame parent, DuplicateAnalysisResult analysisResult) {
-        super(parent, "Duplicate Files Viewer", true);
+        super(parent, get("duplicates.title"), true);
         this.analysisResult = analysisResult;
         initializeUI();
         populateData();
@@ -43,11 +45,11 @@ public class DuplicateViewerWindow extends JDialog {
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.setFont(FONT_BOLD);
 
-        tabbedPane.addTab("Master Duplicates (" + analysisResult.getDuplicateInMasterCount() + ")",
+        tabbedPane.addTab(get("duplicates.masterDuplicates", analysisResult.getDuplicateInMasterCount()),
             createMasterDuplicatesPanel());
-        tabbedPane.addTab("Source Duplicates (" + analysisResult.getDuplicateInSourceCount() + ")",
+        tabbedPane.addTab(get("duplicates.sourceDuplicates", analysisResult.getDuplicateInSourceCount()),
             createSourceDuplicatesPanel());
-        tabbedPane.addTab("Summary", createSummaryPanel());
+        tabbedPane.addTab(get("duplicates.summary"), createSummaryPanel());
 
         mainContainer.add(tabbedPane, BorderLayout.CENTER);
         add(mainContainer, BorderLayout.CENTER);
@@ -65,7 +67,7 @@ public class DuplicateViewerWindow extends JDialog {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        panel.add(createDescriptionLabel("Files that already exist in master backup folder"), BorderLayout.NORTH);
+        panel.add(createDescriptionLabel(get("duplicates.masterDescription")), BorderLayout.NORTH);
 
         tableModel = new DuplicateTableModel();
         duplicateTable = new JTable(tableModel);
@@ -81,7 +83,7 @@ public class DuplicateViewerWindow extends JDialog {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        panel.add(createDescriptionLabel("Duplicate files found within source directories - Files with the same content"), BorderLayout.NORTH);
+        panel.add(createDescriptionLabel(get("duplicates.sourceDescription")), BorderLayout.NORTH);
 
         SourceDuplicateTableModel sourceTableModel = new SourceDuplicateTableModel();
         JTable sourceDuplicateTable = new JTable(sourceTableModel);
@@ -102,12 +104,12 @@ public class DuplicateViewerWindow extends JDialog {
         gbc.anchor = GridBagConstraints.WEST;
 
         Object[][] summaryData = {
-            {"Master Backup Files:", analysisResult.getMasterFileCount(), TEXT_BRIGHT},
-            {"Total Source Files Found:", analysisResult.getTotalSourceFiles(), TEXT_BRIGHT},
-            {"New Files (not in master):", analysisResult.getNewFileCount(), STATUS_SUCCESS},
-            {"Duplicates in Master:", analysisResult.getDuplicateInMasterCount(), STATUS_WARNING},
-            {"Duplicates in Source:", analysisResult.getDuplicateInSourceCount(), STATUS_WARNING},
-            {"Total Duplicates:", analysisResult.getTotalDuplicateCount(), STATUS_ERROR}
+            {get("duplicates.masterFiles"), analysisResult.getMasterFileCount(), TEXT_BRIGHT},
+            {get("duplicates.sourceFiles"), analysisResult.getTotalSourceFiles(), TEXT_BRIGHT},
+            {get("duplicates.uniqueFiles"), analysisResult.getNewFileCount(), STATUS_SUCCESS},
+            {get("duplicates.duplicatesInMaster"), analysisResult.getDuplicateInMasterCount(), STATUS_WARNING},
+            {get("duplicates.duplicatesInSource"), analysisResult.getDuplicateInSourceCount(), STATUS_WARNING},
+            {get("duplicates.totalDuplicates"), analysisResult.getTotalDuplicateCount(), STATUS_ERROR}
         };
 
         for (int i = 0; i < summaryData.length; i++) {
@@ -123,7 +125,7 @@ public class DuplicateViewerWindow extends JDialog {
         // Potencjalna oszczędność miejsca
         gbc.gridx = 0; gbc.gridy = 6;
         gbc.insets = new Insets(20, 12, 12, 12);
-        panel.add(createLabel("Potential Space Savings:", FONT_LARGE_BOLD, TEXT_SECONDARY), gbc);
+        panel.add(createLabel(get("duplicates.potentialSavings"), FONT_LARGE_BOLD, TEXT_SECONDARY), gbc);
 
         gbc.gridx = 1;
         long duplicateSize = analysisResult.getDuplicatesInMaster().stream().mapToLong(BackupFile::getSize).sum()
@@ -153,13 +155,13 @@ public class DuplicateViewerWindow extends JDialog {
     private JPanel createMasterActionsPanel() {
         JPanel panel = createActionPanel();
 
-        JButton openSourceBtn = createButton("Open Source Location", BUTTON_MEDIUM);
+        JButton openSourceBtn = createButton(get("duplicates.openSourceLocation"), BUTTON_MEDIUM);
         openSourceBtn.addActionListener(_ -> openSelectedLocation(true));
 
-        JButton openMasterBtn = createButton("Open Master Location", BUTTON_MEDIUM);
+        JButton openMasterBtn = createButton(get("duplicates.openMasterLocation"), BUTTON_MEDIUM);
         openMasterBtn.addActionListener(_ -> openSelectedLocation(false));
 
-        JButton deleteBtn = createButton("Delete Source File", BUTTON_MEDIUM);
+        JButton deleteBtn = createButton(get("duplicates.deleteSourceFile"), BUTTON_MEDIUM);
         deleteBtn.addActionListener(_ -> deleteSelectedSourceFile());
 
         panel.add(openSourceBtn);
@@ -173,7 +175,7 @@ public class DuplicateViewerWindow extends JDialog {
     private JPanel createSourceActionsPanel(JTable table, SourceDuplicateTableModel model) {
         JPanel panel = createActionPanel();
 
-        JButton openBtn = createButton("Open File Location", BUTTON_MEDIUM);
+        JButton openBtn = createButton(get("duplicates.openFileLocation"), BUTTON_MEDIUM);
         openBtn.addActionListener(_ -> {
             int row = table.getSelectedRow();
             if (row >= 0) {
@@ -182,7 +184,7 @@ public class DuplicateViewerWindow extends JDialog {
             }
         });
 
-        JButton deleteBtn = createButton("Delete File", BUTTON_MEDIUM);
+        JButton deleteBtn = createButton(get("duplicates.deleteFile"), BUTTON_MEDIUM);
         deleteBtn.addActionListener(_ -> {
             int row = table.getSelectedRow();
             if (row >= 0) {
@@ -201,10 +203,10 @@ public class DuplicateViewerWindow extends JDialog {
     private JPanel createControlPanel() {
         JPanel panel = createActionPanel();
 
-        JButton refreshBtn = createButton("Refresh", BUTTON_SMALL);
+        JButton refreshBtn = createButton(get("duplicates.refresh"), BUTTON_SMALL);
         refreshBtn.addActionListener(_ -> populateData());
 
-        JButton closeBtn = createButton("Close", BUTTON_SMALL);
+        JButton closeBtn = createButton(get("button.close"), BUTTON_SMALL);
         closeBtn.addActionListener(_ -> dispose());
 
         panel.add(refreshBtn);
@@ -321,10 +323,11 @@ public class DuplicateViewerWindow extends JDialog {
             DuplicatePair pair = tableModel.getDuplicatePairAt(row);
             if (confirmDelete(pair.getSourcePath())) {
                 if (pair.getSourceFile().getSourceFile().delete()) {
-                    JOptionPane.showMessageDialog(this, "File deleted successfully.", "Delete Complete", JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.showMessageDialog(this, get("dialog.deleteCompleteMessage", 1),
+                        get("dialog.deleteComplete"), JOptionPane.INFORMATION_MESSAGE);
                     populateData();
                 } else {
-                    showError("Failed to delete file.", "Delete Error");
+                    showError(get("dialog.deleteError"), get("dialog.error"));
                 }
             }
         }
@@ -333,18 +336,19 @@ public class DuplicateViewerWindow extends JDialog {
     private void deleteSourceDuplicateFile(BackupFile file) {
         if (confirmDelete(file.getPath())) {
             if (file.getSourceFile().delete()) {
-                JOptionPane.showMessageDialog(this, "File deleted successfully.", "Delete Complete", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this, get("dialog.deleteCompleteMessage", 1),
+                    get("dialog.deleteComplete"), JOptionPane.INFORMATION_MESSAGE);
                 populateData();
             } else {
-                showError("Failed to delete file.", "Delete Error");
+                showError(get("dialog.deleteError"), get("dialog.error"));
             }
         }
     }
 
     private boolean confirmDelete(String path) {
         return JOptionPane.showConfirmDialog(this,
-            "Are you sure you want to delete this file?\n\n" + path + "\n\nThis action cannot be undone!",
-            "Delete File", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION;
+            get("dialog.confirmDeleteMessage", 1, path),
+            get("dialog.confirmDelete"), JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION;
     }
 
 
@@ -356,7 +360,7 @@ public class DuplicateViewerWindow extends JDialog {
         try {
             Desktop.getDesktop().open(file.getParentFile());
         } catch (Exception e) {
-            showError("Failed to open file location: " + e.getMessage(), "Error");
+            showError(get("dialog.error") + ": " + e.getMessage(), get("dialog.error"));
         }
     }
 
@@ -367,10 +371,21 @@ public class DuplicateViewerWindow extends JDialog {
     // ====== MODELE TABEL ======
 
     private static class DuplicateTableModel extends AbstractTableModel {
-        private static final String[] COLUMNS = {"Group", "Source File", "Source Path", "Master File", "Master Path", "Size"};
+        private String[] columns = getLocalizedColumns();
         private List<DuplicatePair> duplicatePairs = new ArrayList<>();
         private final Map<String, Integer> hashToGroupId = new HashMap<>();
         private final Map<Integer, String> rowToHash = new HashMap<>();
+
+        private static String[] getLocalizedColumns() {
+            return new String[]{
+                get("duplicates.columnGroup"),
+                get("duplicates.columnSourceFile"),
+                get("duplicates.columnSourcePath"),
+                get("duplicates.columnMasterFile"),
+                get("duplicates.columnMasterPath"),
+                get("column.size")
+            };
+        }
 
         public void setDuplicatePairs(List<DuplicatePair> pairs) {
             this.duplicatePairs = new ArrayList<>(pairs);
@@ -397,8 +412,8 @@ public class DuplicateViewerWindow extends JDialog {
         }
 
         @Override public int getRowCount() { return duplicatePairs.size(); }
-        @Override public int getColumnCount() { return COLUMNS.length; }
-        @Override public String getColumnName(int column) { return COLUMNS[column]; }
+        @Override public int getColumnCount() { return columns.length; }
+        @Override public String getColumnName(int column) { return columns[column]; }
         @Override public Class<?> getColumnClass(int columnIndex) { return String.class; }
 
         @Override
@@ -417,11 +432,21 @@ public class DuplicateViewerWindow extends JDialog {
     }
 
     private static class SourceDuplicateTableModel extends AbstractTableModel {
-        private static final String[] COLUMNS = {"Group", "File Name", "Path", "Size", "# in Group"};
+        private String[] columns = getLocalizedColumns();
         private final List<BackupFile> duplicateFiles = new ArrayList<>();
         private final Map<String, Integer> hashToGroupId = new HashMap<>();
         private final Map<Integer, String> rowToHash = new HashMap<>();
         private final Map<String, Integer> hashToGroupSize = new HashMap<>();
+
+        private static String[] getLocalizedColumns() {
+            return new String[]{
+                get("duplicates.columnGroup"),
+                get("column.fileName"),
+                get("column.path"),
+                get("column.size"),
+                get("duplicates.columnFilesInGroup")
+            };
+        }
 
         public void setDuplicateGroups(Map<String, List<BackupFile>> groups) {
             duplicateFiles.clear();
@@ -460,8 +485,8 @@ public class DuplicateViewerWindow extends JDialog {
         }
 
         @Override public int getRowCount() { return duplicateFiles.size(); }
-        @Override public int getColumnCount() { return COLUMNS.length; }
-        @Override public String getColumnName(int column) { return COLUMNS[column]; }
+        @Override public int getColumnCount() { return columns.length; }
+        @Override public String getColumnName(int column) { return columns[column]; }
         @Override public Class<?> getColumnClass(int columnIndex) { return String.class; }
 
         @Override

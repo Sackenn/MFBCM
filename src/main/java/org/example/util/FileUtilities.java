@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 /**
  * Narzędzia do operacji na plikach multimedialnych.
@@ -42,14 +43,14 @@ public final class FileUtilities {
 
     public static void collectFilesFromDirectory(File directory, List<File> allFiles,
                                                  BackupConfiguration configuration,
-                                                 CancelCheck cancelCheck) {
-        collectFilesFromDirectory(directory, allFiles, configuration.isIncludeSubdirectories(), cancelCheck);
+                                                 BooleanSupplier isCancelled) {
+        collectFilesFromDirectory(directory, allFiles, configuration.isIncludeSubdirectories(), isCancelled);
     }
 
     public static void collectFilesFromDirectory(File directory, List<File> allFiles,
                                                  boolean includeSubdirectories,
-                                                 CancelCheck cancelCheck) {
-        if (!directory.isDirectory() || (cancelCheck != null && cancelCheck.isCancelled())) return;
+                                                 BooleanSupplier isCancelled) {
+        if (!directory.isDirectory() || (isCancelled != null && isCancelled.getAsBoolean())) return;
 
         File[] files = directory.listFiles();
         if (files == null) return;
@@ -57,12 +58,12 @@ public final class FileUtilities {
         Arrays.sort(files, Comparator.comparing(File::getName));
 
         for (File file : files) {
-            if (cancelCheck != null && cancelCheck.isCancelled()) break;
+            if (isCancelled != null && isCancelled.getAsBoolean()) break;
 
             if (file.isFile() && isMultimediaFile(file)) {
                 allFiles.add(file);
             } else if (file.isDirectory() && includeSubdirectories) {
-                collectFilesFromDirectory(file, allFiles, true, cancelCheck);
+                collectFilesFromDirectory(file, allFiles, true, isCancelled);
             }
         }
     }
@@ -95,12 +96,5 @@ public final class FileUtilities {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
-    }
-
-    // ====== INTERFEJS FUNKCYJNY ======
-
-    @FunctionalInterface
-    public interface CancelCheck {
-        boolean isCancelled();
     }
 }

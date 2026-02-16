@@ -6,6 +6,10 @@ plugins {
 group = 'org.example'
 version = '1.0-SNAPSHOT'
 
+// Konfiguracja kodowania UTF-8 dla polskich znaków
+compileJava.options.encoding = 'UTF-8'
+compileTestJava.options.encoding = 'UTF-8'
+
 application {
     mainClass = 'org.example.Main'
     applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']

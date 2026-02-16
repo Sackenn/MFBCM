@@ -327,7 +327,7 @@ public class FileListPanel extends JPanel {
                 case 3 -> file.getFormattedSize();
                 case 4 -> file.getFormattedDate();
                 case 5 -> file.isVideo() ? get("type.video") : get("type.image");
-                case 6 -> file.getStatus().toString();
+                case 6 -> getLocalizedStatus(file.getStatus());
                 default -> null;
             };
         }
@@ -392,6 +392,17 @@ public class FileListPanel extends JPanel {
             if (index >= 0) {
                 fireTableRowsUpdated(index, index);
             }
+        }
+
+        private String getLocalizedStatus(BackupFile.BackupStatus status) {
+            return switch (status) {
+                case PENDING -> get("status.pending");
+                case IN_PROGRESS -> get("status.inProgress");
+                case COMPLETED -> get("status.completed");
+                case ERROR -> get("status.error");
+                case DUPLICATE -> get("status.duplicate");
+                case UNIQUE -> get("status.unique");
+            };
         }
     }
 

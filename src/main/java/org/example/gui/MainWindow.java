@@ -54,7 +54,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     private JCheckBox includeSubdirectoriesCheckBox, createDateFoldersCheckBox;
     private JCheckBox enableDuplicateDetectionCheckBox, skipHashingCheckBox;
     private JSpinner threadCountSpinner;
-    private JLabel hashThreadsLabel;
+    private JLabel hashThreadsLabel, languageLabel;
     private JComboBox<String> languageComboBox;
 
     // Komponenty UI - Panele z tytulami
@@ -246,8 +246,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         // Selektor jezyka - grupuj label i combo razem
         JPanel langPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         langPanel.setOpaque(false);
-        JLabel langLabel = createLabel(get("app.language") + ":");
-        langPanel.add(langLabel);
+        languageLabel = createLabel(get("app.language") + ":");
+        langPanel.add(languageLabel);
         languageComboBox = new JComboBox<>();
         for (String code : LanguageManager.getAvailableLanguageCodes()) {
             languageComboBox.addItem(LanguageManager.getLanguageDisplayName(code));
@@ -375,7 +375,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     // ====== OPERACJE NAWIGACJI ======
 
     private void browseMasterLocation() {
-        File selectedDir = showDirectoryChooser("Select Master Backup Location",
+        File selectedDir = showDirectoryChooser(get("dialog.selectMasterFolder"),
             configuration.getMasterBackupLocation());
 
         if (selectedDir != null) {
@@ -388,7 +388,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private void addSourceDirectory() {
-        File selectedDir = showDirectoryChooser("Select Source Directory", null);
+        File selectedDir = showDirectoryChooser(get("dialog.selectSourceFolder"), null);
         if (selectedDir != null) {
             configuration.addSourceDirectory(selectedDir);
             sourceListModel.addElement(selectedDir);
@@ -408,7 +408,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     }
 
     private void addSyncLocation() {
-        File selectedDir = showDirectoryChooser("Select Sync Location", null);
+        File selectedDir = showDirectoryChooser(get("dialog.selectSyncFolder"), null);
         if (selectedDir != null) {
             if (selectedDir.equals(configuration.getMasterBackupLocation())) {
                 JOptionPane.showMessageDialog(this,
@@ -464,14 +464,14 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             currentScanner.execute();
         }
 
-        scanButton.setText("Cancel Scan");
+        scanButton.setText(get("button.cancelScan"));
         backupButton.setEnabled(false);
         viewDuplicatesButton.setEnabled(false);
     }
 
     private void startBackup() {
         if (isBackupInProgress()) {
-            if (confirmAction("Are you sure you want to cancel the backup?", "Cancel Backup")) {
+            if (confirmAction(get("dialog.confirmCancelSync"), get("button.cancelBackup"))) {
                 cancelBackup();
             }
             return;
@@ -479,51 +479,50 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
         List<BackupFile> selectedFiles = fileListPanel.getSelectedFiles();
         if (selectedFiles.isEmpty()) {
-            showWarning("No files selected for backup.", "No Files Selected");
+            showWarning(get("dialog.noFilesSelected"), get("dialog.noSelection"));
             return;
         }
 
-        if (confirmAction("Start backup of " + selectedFiles.size() + " files?", "Confirm Backup")) {
+        if (confirmAction(get("dialog.confirmBackup", selectedFiles.size()), get("dialog.backupComplete"))) {
             backupProgressBar.setValue(0);
-            backupProgressBar.setString("Starting backup...");
+            backupProgressBar.setString(get("progress.scanning"));
 
             currentBackupService = new BackupService(fileListPanel.getAllFiles(), configuration, this);
             currentBackupService.execute();
 
-            backupButton.setText("Cancel Backup");
+            backupButton.setText(get("button.cancelBackup"));
             scanButton.setEnabled(false);
         }
     }
 
     private void startSync() {
         if (isSyncInProgress()) {
-            if (confirmAction("Are you sure you want to cancel the sync?", "Cancel Sync")) {
+            if (confirmAction(get("dialog.confirmCancelSync"), get("button.cancelSync"))) {
                 cancelSync();
             }
             return;
         }
 
         List<File> syncLocations = configuration.getSyncLocations();
-        StringBuilder message = new StringBuilder("Sync master folder to the following locations?\n\n");
-        syncLocations.forEach(loc -> message.append("• ").append(loc.getAbsolutePath()).append("\n"));
-        message.append("\nThis will copy all files from the master folder and remove files that no longer exist.");
+        StringBuilder message = new StringBuilder();
+        syncLocations.forEach(loc -> message.append("\u2022 ").append(loc.getAbsolutePath()).append("\n"));
 
-        if (confirmAction(message.toString(), "Confirm Sync")) {
+        if (confirmAction(get("dialog.syncMessage", message.toString()), get("dialog.confirmSync"))) {
             syncProgressBar.setValue(0);
-            syncProgressBar.setString("Starting sync...");
-            statusLabel.setText("Syncing master folder...");
+            syncProgressBar.setString(get("status.syncing"));
+            statusLabel.setText(get("status.syncing"));
 
             currentSyncService = new SyncService(configuration, this);
             currentSyncService.execute();
 
-            syncButton.setText("Cancel Sync");
+            syncButton.setText(get("button.cancelSync"));
             updateButtonStates();
         }
     }
 
     private void deleteSelectedFiles() {
         if (isDeleteInProgress()) {
-            if (confirmAction("Are you sure you want to cancel the delete operation?", "Cancel Delete")) {
+            if (confirmAction(get("dialog.confirmCancelSync"), get("button.cancelDelete"))) {
                 cancelDelete();
             }
             return;
@@ -531,33 +530,25 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
         List<BackupFile> selectedFiles = fileListPanel.getSelectedFiles();
         if (selectedFiles.isEmpty()) {
-            showWarning("No files selected for deletion.", "No Selection");
+            showWarning(get("dialog.noFilesSelected"), get("dialog.noSelection"));
             return;
         }
 
         long totalSize = selectedFiles.stream().mapToLong(BackupFile::getSize).sum();
         String sizeText = org.example.util.FileUtilities.formatFileSize(totalSize);
 
-        String message = String.format("""
-            Are you sure you want to permanently delete %d selected files?
-            
-            Total size: %s
-            
-            WARNING: This action cannot be undone!""",
-            selectedFiles.size(), sizeText);
-
-        if (!confirmAction(message, "Confirm Delete")) {
+        if (!confirmAction(get("dialog.confirmDeleteMessage", selectedFiles.size(), sizeText), get("dialog.confirmDelete"))) {
             return;
         }
 
         scanProgressBar.setValue(0);
-        scanProgressBar.setString("Deleting files...");
-        statusLabel.setText("Deleting " + selectedFiles.size() + " files...");
+        scanProgressBar.setString(get("status.deletingFiles"));
+        statusLabel.setText(get("status.deletingFiles"));
 
         currentDeleteService = new FileDeleteService(selectedFiles, this);
         currentDeleteService.execute();
 
-        deleteSelectedButton.setText("Cancel Delete");
+        deleteSelectedButton.setText(get("button.cancelDelete"));
         updateButtonStates();
     }
 
@@ -590,8 +581,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             currentDuplicateService = null;
         }
         scanProgressBar.setValue(0);
-        scanProgressBar.setString("Scan cancelled");
-        statusLabel.setText("Scan cancelled by user");
+        scanProgressBar.setString(get("progress.scanCancelled"));
+        statusLabel.setText(get("status.scanCancelled"));
         updateButtonStates();
     }
 
@@ -642,13 +633,13 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         boolean scanInProgress = isScanInProgress();
 
         scanButton.setEnabled(canScan);
-        scanButton.setText(scanInProgress ? "Cancel Scan" : "Scan for Files");
+        scanButton.setText(scanInProgress ? get("button.cancelScan") : get("button.scanFiles"));
 
         boolean hasSelectedFiles = !fileListPanel.getSelectedFiles().isEmpty();
         boolean backupInProgress = isBackupInProgress();
 
         backupButton.setEnabled(hasSelectedFiles && !scanInProgress && canScan);
-        backupButton.setText(backupInProgress ? "Cancel Backup" : "Start Backup");
+        backupButton.setText(backupInProgress ? get("button.cancelBackup") : get("button.startBackup"));
 
         if (!viewDuplicatesButton.isEnabled() && lastDuplicateResult != null &&
             lastDuplicateResult.getTotalDuplicateCount() > 0) {
@@ -664,7 +655,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                          !configuration.getSyncLocations().isEmpty() &&
                          !scanInProgress && !backupInProgress;
         syncButton.setEnabled(canSync || syncInProgress);
-        syncButton.setText(syncInProgress ? "Cancel Sync" : "Sync Locations");
+        syncButton.setText(syncInProgress ? get("button.cancelSync") : get("button.syncLocations"));
 
         deleteSelectedButton.setEnabled(hasSelectedFiles && !scanInProgress && !backupInProgress && !syncInProgress);
     }
@@ -708,7 +699,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                 : "Scan completed - " + files.size() + " files found";
             scanProgressBar.setString(message);
             lastTimingInfo = null;
-            statusLabel.setText("Found " + files.size() + " multimedia files");
+            statusLabel.setText(get("scan.foundFiles", files.size()));
             updateButtonStates();
         });
     }
@@ -716,11 +707,11 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     @Override
     public void scanFailed(String error) {
         SwingUtilities.invokeLater(() -> {
-            scanProgressBar.setString("Scan failed: " + error);
-            statusLabel.setText("Scan failed");
+            scanProgressBar.setString(get("dialog.error") + ": " + error);
+            statusLabel.setText(get("dialog.error"));
             updateButtonStates();
-            JOptionPane.showMessageDialog(this, "Scan failed: " + error,
-                    "Scan Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, get("dialog.error") + ": " + error,
+                    get("dialog.error"), JOptionPane.ERROR_MESSAGE);
         });
     }
 
@@ -749,17 +740,16 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     public void backupCompleted(int successCount, int errorCount) {
         SwingUtilities.invokeLater(() -> {
             backupProgressBar.setValue(100);
-            backupProgressBar.setString("Backup completed - " + successCount + " files copied");
-            statusLabel.setText("Backup completed: " + successCount + " successful, " + errorCount + " errors");
+            backupProgressBar.setString(get("progress.backupCompleted", successCount));
+            statusLabel.setText(get("status.backupCompleted", successCount, errorCount));
             updateButtonStates();
 
-            String message = String.format("Backup completed!\n\nSuccessfully copied: %d files\nErrors: %d files",
-                    successCount, errorCount);
-            JOptionPane.showMessageDialog(this, message, "Backup Complete",
+            JOptionPane.showMessageDialog(this, get("dialog.backupCompleteMessage", successCount, errorCount),
+                    get("dialog.backupComplete"),
                     errorCount == 0 ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
 
             if (successCount > 0) {
-                statusLabel.setText("Refreshing master folder...");
+                statusLabel.setText(get("status.refreshingMaster"));
                 performAutomaticMasterRescan();
             }
         });
@@ -771,20 +761,18 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             boolean wasCancelled = error != null && error.toLowerCase().contains("cancel");
 
             if (wasCancelled) {
-                backupProgressBar.setString("Backup cancelled");
-                statusLabel.setText(filesBackedUpBeforeCancellation > 0
-                    ? "Backup cancelled - " + filesBackedUpBeforeCancellation + " files were copied before cancellation"
-                    : "Backup cancelled by user");
+                backupProgressBar.setString(get("progress.backupCancelled"));
+                statusLabel.setText(get("status.backupCancelled"));
 
                 if (filesBackedUpBeforeCancellation > 0) {
-                    statusLabel.setText("Backup cancelled - Refreshing master folder...");
+                    statusLabel.setText(get("status.refreshingMaster"));
                     performAutomaticMasterRescan();
                 }
             } else {
-                backupProgressBar.setString("Backup failed: " + error);
-                statusLabel.setText("Backup failed");
-                JOptionPane.showMessageDialog(this, "Backup failed: " + error,
-                        "Backup Error", JOptionPane.ERROR_MESSAGE);
+                backupProgressBar.setString(get("dialog.error") + ": " + error);
+                statusLabel.setText(get("dialog.error"));
+                JOptionPane.showMessageDialog(this, get("dialog.error") + ": " + error,
+                        get("dialog.error"), JOptionPane.ERROR_MESSAGE);
             }
             updateButtonStates();
         });
@@ -809,8 +797,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                 : "Duplicate detection completed - " + result.getTotalSourceFiles() + " files found";
 
             scanProgressBar.setString(message);
-            statusLabel.setText("Found " + result.getNewFileCount() + " new files, " +
-                              result.getTotalDuplicateCount() + " duplicates");
+            statusLabel.setText(get("scan.newFilesAndDuplicates", result.getNewFileCount(), result.getTotalDuplicateCount()));
             viewDuplicatesButton.setEnabled(result.getTotalDuplicateCount() > 0);
             updateButtonStates();
         });
@@ -819,11 +806,11 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     @Override
     public void detectionFailed(String error) {
         SwingUtilities.invokeLater(() -> {
-            scanProgressBar.setString("Duplicate detection failed: " + error);
-            statusLabel.setText("Duplicate detection failed");
+            scanProgressBar.setString(get("dialog.error") + ": " + error);
+            statusLabel.setText(get("dialog.error"));
             updateButtonStates();
-            JOptionPane.showMessageDialog(this, "Duplicate detection failed: " + error,
-                    "Detection Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, get("dialog.error") + ": " + error,
+                    get("dialog.error"), JOptionPane.ERROR_MESSAGE);
         });
     }
 
@@ -831,26 +818,24 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     public void syncCompleted(SyncResult result) {
         SwingUtilities.invokeLater(() -> {
             syncProgressBar.setValue(100);
-            syncProgressBar.setString("Sync completed - " + result.getSuccessCount() + " locations synced");
-            statusLabel.setText("Sync completed: " + result.getSuccessCount() + " successful, " +
-                              result.getFailureCount() + " failed");
+            syncProgressBar.setString(get("progress.syncCompleted", result.getSuccessCount()));
+            statusLabel.setText(get("status.syncCompleted", result.getSuccessCount(), result.getFailureCount()));
             updateButtonStates();
 
-            StringBuilder message = new StringBuilder("Sync completed!\n\n");
+            StringBuilder message = new StringBuilder(get("dialog.syncComplete") + "\n\n");
             if (!result.getSuccessfulLocations().isEmpty()) {
-                message.append("Successfully synced to:\n");
                 result.getSuccessfulLocations().forEach(loc ->
-                    message.append("• ").append(loc.getAbsolutePath()).append("\n"));
+                    message.append("\u2022 ").append(loc.getAbsolutePath()).append("\n"));
             }
             if (!result.getFailedLocations().isEmpty()) {
-                message.append("\nFailed to sync to:\n");
+                message.append("\n").append(get("dialog.error")).append(":\n");
                 for (Map.Entry<File, String> entry : result.getFailedLocations().entrySet()) {
-                    message.append("• ").append(entry.getKey().getAbsolutePath())
-                           .append("\n  Error: ").append(entry.getValue()).append("\n");
+                    message.append("\u2022 ").append(entry.getKey().getAbsolutePath())
+                           .append(": ").append(entry.getValue()).append("\n");
                 }
             }
 
-            JOptionPane.showMessageDialog(this, message.toString(), "Sync Complete",
+            JOptionPane.showMessageDialog(this, message.toString(), get("dialog.syncComplete"),
                     result.hasFailures() ? JOptionPane.WARNING_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
         });
     }
@@ -858,11 +843,11 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     @Override
     public void syncFailed(String error) {
         SwingUtilities.invokeLater(() -> {
-            syncProgressBar.setString("Sync failed: " + error);
-            statusLabel.setText("Sync failed");
+            syncProgressBar.setString(get("dialog.syncFailed", error));
+            statusLabel.setText(get("dialog.syncError"));
             updateButtonStates();
-            JOptionPane.showMessageDialog(this, "Sync failed: " + error,
-                    "Sync Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, get("dialog.syncFailed", error),
+                    get("dialog.syncError"), JOptionPane.ERROR_MESSAGE);
         });
     }
 
@@ -872,7 +857,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     public void deleteCompleted(FileDeleteService.DeleteResult result) {
         SwingUtilities.invokeLater(() -> {
             scanProgressBar.setValue(100);
-            deleteSelectedButton.setText("Delete Selected");
+            deleteSelectedButton.setText(get("button.deleteSelected"));
 
             // Odśwież listę plików - usuń usunięte pliki
             List<BackupFile> remainingFiles = fileListPanel.getAllFiles().stream()
@@ -882,28 +867,25 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             fileListPanel.updateSummary();
 
             String sizeText = org.example.util.FileUtilities.formatFileSize(result.getTotalDeletedSize());
-            scanProgressBar.setString("Deleted " + result.getDeletedCount() + " files (" + sizeText + ")");
-            statusLabel.setText("Deleted " + result.getDeletedCount() + " files" +
-                (result.hasFailures() ? " (" + result.getFailedCount() + " failed)" : ""));
+            scanProgressBar.setString(get("dialog.deleteCompleteMessage", result.getDeletedCount()));
+            statusLabel.setText(get("dialog.deleteCompleteMessage", result.getDeletedCount()));
 
             // Pokaż wynik operacji
             if (result.hasFailures()) {
                 StringBuilder message = new StringBuilder();
-                message.append(String.format("Deleted: %d files\nFailed: %d files\n\n",
-                    result.getDeletedCount(), result.getFailedCount()));
-                message.append("Failed files:\n");
+                message.append(get("dialog.deleteCompleteMessage", result.getDeletedCount())).append("\n");
+                message.append(get("dialog.error")).append(": ").append(result.getFailedCount()).append("\n\n");
                 result.getFailedFiles().stream().limit(10).forEach(f ->
-                    message.append("• ").append(f.file().getFileName())
+                    message.append("\u2022 ").append(f.file().getFileName())
                            .append(" - ").append(f.reason()).append("\n"));
                 if (result.getFailedCount() > 10) {
-                    message.append("... and ").append(result.getFailedCount() - 10).append(" more\n");
+                    message.append("... +").append(result.getFailedCount() - 10).append("\n");
                 }
-                showWarning(message.toString(), "Delete Partially Complete");
+                showWarning(message.toString(), get("dialog.warning"));
             } else {
                 JOptionPane.showMessageDialog(this,
-                    String.format("Successfully deleted %d files (%s).",
-                        result.getDeletedCount(), sizeText),
-                    "Delete Complete", JOptionPane.INFORMATION_MESSAGE);
+                    get("dialog.deleteCompleteMessage", result.getDeletedCount()),
+                    get("dialog.deleteComplete"), JOptionPane.INFORMATION_MESSAGE);
             }
 
             updateButtonStates();
@@ -913,14 +895,14 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
     @Override
     public void deleteFailed(String error) {
         SwingUtilities.invokeLater(() -> {
-            scanProgressBar.setString("Delete failed: " + error);
-            statusLabel.setText("Delete failed");
-            deleteSelectedButton.setText("Delete Selected");
+            scanProgressBar.setString(get("dialog.deleteError") + ": " + error);
+            statusLabel.setText(get("dialog.deleteError"));
+            deleteSelectedButton.setText(get("button.deleteSelected"));
             updateButtonStates();
 
             if (!error.toLowerCase().contains("cancel")) {
-                JOptionPane.showMessageDialog(this, "Delete failed: " + error,
-                    "Delete Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, get("dialog.deleteError") + ": " + error,
+                    get("dialog.deleteError"), JOptionPane.ERROR_MESSAGE);
             }
         });
     }
@@ -959,24 +941,20 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                 try {
                     HashStorageService.ValidationResult result = get();
                     if (result.hasChanges()) {
-                        statusLabel.setText("Master folder updated: " + result.getTotalChanges() + " changes");
+                        statusLabel.setText(LanguageManager.get("master.updated", result.getTotalChanges()));
                         if (result.getTotalChanges() > 10) {
-                            String message = String.format("""
-                                Master folder validation completed:
-                                New files: %d
-                                Modified files: %d
-                                Deleted files: %d""",
-                                result.getNewFiles().size(),
-                                result.getModifiedFiles().size(),
-                                result.getDeletedFiles().size());
-                            JOptionPane.showMessageDialog(MainWindow.this, message,
-                                    "Master Folder Updated", JOptionPane.INFORMATION_MESSAGE);
+                            JOptionPane.showMessageDialog(MainWindow.this,
+                                    LanguageManager.get("master.validationComplete",
+                                        result.getNewFiles().size(),
+                                        result.getModifiedFiles().size(),
+                                        result.getDeletedFiles().size()),
+                                    LanguageManager.get("dialog.info"), JOptionPane.INFORMATION_MESSAGE);
                         }
                     } else {
-                        statusLabel.setText("Master folder is up to date");
+                        statusLabel.setText(LanguageManager.get("master.upToDate"));
                     }
                 } catch (Exception e) {
-                    statusLabel.setText("Hash validation failed: " + e.getMessage());
+                    statusLabel.setText(LanguageManager.get("master.validationFailed", e.getMessage()));
                 }
             }
         };
@@ -988,8 +966,8 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             new DuplicateViewerWindow(this, lastDuplicateResult).setVisible(true);
         } else {
             JOptionPane.showMessageDialog(this,
-                    "No duplicate analysis available. Please run a scan with duplicate detection enabled first.",
-                    "No Duplicate Data", JOptionPane.INFORMATION_MESSAGE);
+                    get("master.noDuplicateData"),
+                    get("dialog.info"), JOptionPane.INFORMATION_MESSAGE);
         }
     }
 
@@ -1022,7 +1000,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
 
     private void rescanMasterFolder() {
         if (configuration.getMasterBackupLocation() == null) {
-            showWarning("No master backup location configured.", "Configuration Error");
+            showWarning(get("master.noLocationConfigured"), get("dialog.error"));
             return;
         }
 
@@ -1030,20 +1008,16 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
             initializeHashStorage();
         }
 
-        if (!confirmAction("""
-                This will rescan the entire master backup folder and update the hash database.
-                This may take some time depending on the number of files.
-                
-                Do you want to continue?""", "Confirm Master Folder Rescan")) {
+        if (!confirmAction(get("master.confirmRescan"), get("master.confirmRescanTitle"))) {
             return;
         }
 
         rescanMasterButton.setEnabled(false);
         scanButton.setEnabled(false);
         backupButton.setEnabled(false);
-        statusLabel.setText("Rescanning master backup folder...");
+        statusLabel.setText(get("master.rescanning"));
         scanProgressBar.setValue(0);
-        scanProgressBar.setString("Rescanning master folder...");
+        scanProgressBar.setString(get("master.rescanningShort"));
 
         createRescanWorker(false).execute();
     }
@@ -1054,7 +1028,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         }
 
         scanProgressBar.setValue(0);
-        scanProgressBar.setString("Refreshing master folder...");
+        scanProgressBar.setString(get("master.refreshing"));
 
         createRescanWorker(true).execute();
     }
@@ -1096,39 +1070,31 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
                     scanProgressBar.setValue(100);
 
                     String timingInfo = result.getProcessingTimeMs() > 0
-                        ? "completed in " + result.getFormattedDuration() +
+                        ? result.getFormattedDuration() +
                           " (" + String.format("%.1f", result.getThroughputMbPerSec()) + " MB/s)"
-                        : (isAutomatic ? "refreshed" : "completed");
+                        : "";
 
-                    scanProgressBar.setString("Master folder " + (isAutomatic ? "refresh " : "rescan ") + timingInfo);
-                    statusLabel.setText("Master folder " + (isAutomatic ? "refreshed" : "rescan completed") +
-                                       ": " + result.getTotalChanges() + " changes detected");
+                    scanProgressBar.setString(timingInfo);
+                    statusLabel.setText(isAutomatic
+                        ? LanguageManager.get("master.refreshCompleted", result.getTotalChanges())
+                        : LanguageManager.get("master.rescanCompleted", result.getTotalChanges()));
 
-                    if (!isAutomatic) {
-                        String message = String.format("""
-                            Master folder rescan completed successfully!
-                            
-                            Files processed:
-                            • New files: %d
-                            • Modified files: %d
-                            • Removed files: %d
-                            
-                            Total changes: %d""",
-                            result.getNewFiles().size(),
-                            result.getModifiedFiles().size(),
-                            result.getDeletedFiles().size(),
-                            result.getTotalChanges());
-                        JOptionPane.showMessageDialog(MainWindow.this, message,
-                                "Rescan Complete", JOptionPane.INFORMATION_MESSAGE);
-                    }
-                } catch (Exception e) {
-                    scanProgressBar.setString((isAutomatic ? "Refresh" : "Rescan") + " failed");
-                    statusLabel.setText("Master folder " + (isAutomatic ? "refresh" : "rescan") +
-                                       " failed: " + e.getMessage());
                     if (!isAutomatic) {
                         JOptionPane.showMessageDialog(MainWindow.this,
-                                "Failed to rescan master folder:\n" + e.getMessage(),
-                                "Rescan Error", JOptionPane.ERROR_MESSAGE);
+                            LanguageManager.get("master.rescanComplete",
+                                result.getNewFiles().size(),
+                                result.getModifiedFiles().size(),
+                                result.getDeletedFiles().size(),
+                                result.getTotalChanges()),
+                            LanguageManager.get("master.rescanCompleteTitle"), JOptionPane.INFORMATION_MESSAGE);
+                    }
+                } catch (Exception e) {
+                    scanProgressBar.setString(LanguageManager.get("dialog.error"));
+                    statusLabel.setText(LanguageManager.get("master.rescanFailed", e.getMessage()));
+                    if (!isAutomatic) {
+                        JOptionPane.showMessageDialog(MainWindow.this,
+                                LanguageManager.get("master.rescanFailed", e.getMessage()),
+                                LanguageManager.get("master.rescanError"), JOptionPane.ERROR_MESSAGE);
                     }
                 } finally {
                     updateButtonStates();
@@ -1172,6 +1138,7 @@ public class MainWindow extends JFrame implements FileScanner.ScanProgressCallba
         skipHashingCheckBox.setText(get("option.skipHashing"));
         skipHashingCheckBox.setToolTipText(get("option.skipHashingTooltip"));
         hashThreadsLabel.setText(get("option.hashThreads"));
+        languageLabel.setText(get("app.language") + ":");
 
         // Przyciski akcji - aktualizuj tylko jezeli nie sa w trakcie operacji
         if (!isScanInProgress()) {
