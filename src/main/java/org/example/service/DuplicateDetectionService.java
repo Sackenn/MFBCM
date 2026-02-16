@@ -177,7 +177,7 @@ public class DuplicateDetectionService extends SwingWorker<DuplicateAnalysisResu
 
         MultiThreadedHashCalculator calculator = new MultiThreadedHashCalculator(configuration.getHashingThreadCount());
         try {
-            Map<String, String> fileHashes = calculator.calculateHashesWithCancellation(
+            Map<String, String> fileHashes = calculator.calculateHashes(
                 allSourceFiles, createHashProgressCallback(), this::isCancelled);
 
             for (File file : allSourceFiles) {

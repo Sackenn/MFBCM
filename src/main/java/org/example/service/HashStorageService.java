@@ -108,7 +108,7 @@ public class HashStorageService {
         MultiThreadedHashCalculator calculator = new MultiThreadedHashCalculator(threadCount);
 
         try {
-            Map<String, String> hashedResults = calculator.calculateHashesWithCancellation(
+            Map<String, String> hashedResults = calculator.calculateHashes(
                 filesToHash, progressCallback, isCancelled);
 
             updateResultsWithHashes(filesToHash, hashedResults, result, isCancelled);

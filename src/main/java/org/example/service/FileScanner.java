@@ -112,7 +112,7 @@ public class FileScanner extends SwingWorker<List<BackupFile>, String> {
 
         MultiThreadedHashCalculator calculator = new MultiThreadedHashCalculator(configuration.getHashingThreadCount());
         try {
-            Map<String, String> fileHashes = calculator.calculateHashesWithCancellation(
+            Map<String, String> fileHashes = calculator.calculateHashes(
                 allFiles, createProgressCallback(), this::isCancelled);
 
             for (File file : allFiles) {

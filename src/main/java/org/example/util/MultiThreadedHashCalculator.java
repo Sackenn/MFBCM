@@ -46,8 +46,8 @@ public class MultiThreadedHashCalculator {
         System.out.println("MultiThreadedHashCalculator initialized with " + this.threadCount + " threads");
     }
 
-    public Map<String, String> calculateHashesWithCancellation(List<File> files,
-            ProgressCallback progressCallback, BooleanSupplier isCancelled) throws InterruptedException {
+    public Map<String, String> calculateHashes(List<File> files,
+                                               ProgressCallback progressCallback, BooleanSupplier isCancelled) throws InterruptedException {
 
         long startTime = System.currentTimeMillis();
         System.out.println("Starting multi-threaded hash calculation of " + files.size() + " files using " + threadCount + " threads");
